@@ -203,6 +203,38 @@
       .then(r => { if (!r.ok) throw new Error('leaderboard ' + r.status); return r.text(); })
       .then(t => t ? JSON.parse(t) : null);   // 저장(201)은 빈 응답으로 온다
   }
+  // 50차: 이용 통계 (관리자 화면용) — 접속(visit)·선수 생성(create)·은퇴(retire)를 날짜별로 센다.
+  // 관리자 브라우저와 내 컴퓨터(localhost)에서 한 플레이는 세지 않는다. 서버 쪽은 proto/supabase-stats.sql
+  const LOCALHOST = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !window.__countLocal;   // __countLocal: 테스트 페이지용
+  function bump(k) {
+    if (!LB_ON || App.admin || LOCALHOST || /[?&]admin=/.test(location.search)) return;
+    lbFetch('rpc/bump', { method: 'POST', body: JSON.stringify({ k }) }).catch(() => { });
+  }
+  App.stats = { data: null, at: 0, err: false, loading: false };
+  function statsLoad() {
+    if (!LB_ON || App.stats.loading || (App.stats.at && Date.now() - App.stats.at < 60000)) return;
+    App.stats.loading = true;
+    lbFetch('stats_daily?select=day,kind,n&order=day.desc&limit=3000')
+      .then(rows => { App.stats.data = rows || []; App.stats.err = false; })
+      .catch(() => { App.stats.err = true; })
+      .then(() => { App.stats.loading = false; App.stats.at = Date.now(); if (App.view === 'home') render(); });
+  }
+  function statsPanel() {
+    if (!App.admin) return '';
+    const box = inner => `<div class="panel admin-panel"><h3>관리자 · 이용 통계 <span class="tiny muted">전체 온라인</span></h3>${inner}</div>`;
+    if (!LB_ON) return box('<div class="small muted">온라인 서버가 설정되지 않았다.</div>');
+    statsLoad();
+    const S = App.stats;
+    if (!S.data) return box(`<div class="small muted">${S.err ? '통계를 불러오지 못했다. Supabase에서 supabase-stats.sql을 실행했는지 확인.' : '불러오는 중…'}</div>`);
+    const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);   // 한국 날짜
+    const sum = (k, d) => S.data.filter(r => r.kind === k && (!d || r.day === d)).reduce((a, r) => a + (+r.n || 0), 0);
+    const K = [['visit', '접속'], ['create', '생성된 선수'], ['retire', '은퇴한 선수']];
+    const days = [...new Set(S.data.map(r => r.day))].sort().reverse().slice(0, 7);
+    return box(`<div class="season-sum">${K.map(([k, t]) => `<div><b>${sum(k).toLocaleString()}</b><span>${t} (전체)</span></div>`).join('')}</div>
+      <div class="season-sum" style="margin-top:6px">${K.map(([k, t]) => `<div><b>${sum(k, today).toLocaleString()}</b><span>오늘 ${t}</span></div>`).join('')}</div>
+      ${days.length ? `<div class="tbl-scroll" style="margin-top:8px"><table class="lg"><tr><th>날짜</th>${K.map(([, t]) => `<th>${t}</th>`).join('')}</tr>${days.map(d => `<tr><td>${esc(d.slice(5))}</td>${K.map(([k]) => `<td>${sum(k, d)}</td>`).join('')}</tr>`).join('')}</table></div>` : ''}
+      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
+  }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
   function lbLoad(force) {
     if (!LB_ON || App.lb.loading) return;
@@ -305,6 +337,7 @@
         ${App.admin ? `<button class="btn block small ghost" data-act="admin">${App.dev ? '<span class="admin-on">관리자 모드 ON</span> · 끄기' : '관리자 모드 들어가기'}</button>` : ''}
       </div>
       ${App.dev ? '<div class="panel admin-panel small">관리자 모드: 진행 화면에서 내 선수의 잠재능력(PA)·등급·성장/노화 유형·전성기 시기를, 리그 탭 구단 기록에서 선수 OVR을 볼 수 있다.</div>' : ''}
+      ${statsPanel()}
       ${homeBoard(recs)}
       <p class="tiny muted" style="text-align:center;margin-top:18px">리그 선수는 2025 시즌 실제 명단 기준(능력치는 가상) · 진행 중인 게임은 이 브라우저에 저장된다</p>`;
   }
@@ -1159,6 +1192,7 @@
     }
     const top = recs.slice(0, REC_MAX);
     st._rank = mine ? top.indexOf(mine) + 1 : 0;   // 0이면 TOP 50 밖 → 기록 없음
+    bump('retire');   // 50차: 이용 통계
     if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
     save();   // 39차: 커리어 저장 데이터는 지운다 (화면의 은퇴 결산은 메모리에 남아 있음)
@@ -1387,7 +1421,7 @@
       case 'cr-pick': App.create.pick = +v; render(); break;
       case 'cr-reroll': App.create.candSeed = (Math.random() * 1e9) >>> 0; App.create.pick = 0; rollCands(); render(); break;
       case 'cr-ava': App.create.avatar = (Math.random() * 1e6) | 0; render(); break;
-      case 'cr-start': startCareer(); break;
+      case 'cr-start': startCareer(); bump('create'); break;
       case 'flip': App.flipped = !App.flipped; el.classList.toggle('flipped', App.flipped); break;
       case 'tab': App.tab = v; render(); break;
       case 'lgcat': App.lgCat = v; render(); break;
@@ -1476,6 +1510,13 @@
     };
     setInterval(tick, local ? 20000 : 300000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - last > 60000) tick(); });
+  })();
+
+  // 50차: 접속 1회 (같은 탭에서 새로고침은 다시 세지 않는다)
+  (function countVisit() {
+    let seen = false;
+    try { seen = sessionStorage.getItem('dugout_visit') === '1'; sessionStorage.setItem('dugout_visit', '1'); } catch (e) { }
+    if (!seen) bump('visit');
   })();
 
   // 33차: ?admin=비밀키 → 이 브라우저를 관리자로 기억, ?admin=off → 해제. 처리 후 주소에서 키를 지운다.
