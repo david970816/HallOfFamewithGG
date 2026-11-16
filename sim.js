@@ -1899,8 +1899,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   // 상대별 한국 승리 확률 (대표팀 기준), 대회별 대진
   const INTL_OPP = { 홍콩: 0.95, 태국: 0.93, 필리핀: 0.93, 중국: 0.85, 대만: 0.58, '일본(사회인)': 0.6, 일본: 0.42, 미국: 0.4, 도미니카: 0.42, 베네수엘라: 0.45, 쿠바: 0.55, 멕시코: 0.52, 이스라엘: 0.68, 호주: 0.66, 체코: 0.8, 네덜란드: 0.6, 푸에르토리코: 0.45 };
   const INTL_FMT = {
-    AG: { group: ['태국', '홍콩', '대만'], ko: [['준결승', ['일본(사회인)', '대만', '중국']], ['결승', ['대만', '일본(사회인)']]], need: 2, boost: 0.07 },   // 43차: 경기마다 승률 +7%p (금메달 약 39% → 약 48%)
-    OLY: { group: ['이스라엘', '미국', '도미니카'], ko: [['준결승', ['일본', '미국', '멕시코']], ['결승', ['일본', '미국', '도미니카']]], bronze: ['멕시코', '도미니카', '미국'], need: 1 },   // 29차: 2→1 (도쿄 올림픽처럼 조별리그는 시드 결정 성격, 메달 확률 약 35%→60%)
+    AG: { group: ['태국', '홍콩', '대만'], ko: [['준결승', ['일본(사회인)', '대만', '중국']], ['결승', ['대만', '일본(사회인)']]], need: 2, boost: 0.22 },   // 43차: 경기마다 승률 +7%p (금메달 약 39% → 약 48%). 46차: +22%p (금메달 약 70%)
+    OLY: { group: ['이스라엘', '미국', '도미니카'], ko: [['준결승', ['일본', '미국', '멕시코']], ['결승', ['일본', '미국', '도미니카']]], bronze: ['멕시코', '도미니카', '미국'], need: 1, boost: 0.27 },   // 46차: 경기마다 승률 +27%p (금메달 약 16% → 약 50%, 메달 약 90%)   // 29차: 2→1 (도쿄 올림픽처럼 조별리그는 시드 결정 성격, 메달 확률 약 35%→60%)
     P12: { group: ['호주', '쿠바', '대만'], ko: [['슈퍼라운드', ['멕시코', '미국', '베네수엘라']], ['결승', ['일본', '미국']]], need: 2 },
     WBC: { group: ['체코', '호주', '일본'], ko: [['8강', ['쿠바', '네덜란드', '멕시코']], ['4강', ['미국', '도미니카', '베네수엘라']], ['결승', ['일본', '미국', '푸에르토리코']]], need: 2 },
   };
@@ -1923,7 +1923,16 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         }
       }
       const win = R() < clamp((INTL_OPP[opp] || 0.5) + bonus + (F.boost || 0), 0.05, 0.97);
-      const w = Math.max(1, Math.round(4.5 + R.gauss() * 2.5)), l = Math.max(0, Math.min(w - 1, Math.round(w - 1 - Math.abs(R.gauss()) * 2.5)));
+      let w = Math.max(1, Math.round(4.5 + R.gauss() * 2.5)), l = Math.max(0, Math.min(w - 1, Math.round(w - 1 - Math.abs(R.gauss()) * 2.5)));
+      // 47차: 점수를 내 기록과 맞춘다 — 우리 팀 득점 ≥ 내 타점, 상대 득점 ≥ 내 자책점 (4:0 승리인데 '4실점 난타'가 나오던 문제)
+      {
+        let ours = win ? w : l, opp = win ? l : w;
+        ours = Math.max(ours, bs ? bs.RBI || 0 : 0);
+        opp = Math.max(opp, ps ? ps.R || ps.ER || 0 : 0);
+        if (win && ours <= opp) ours = opp + 1 + Math.floor(Math.abs(R.gauss()) * 1.5);
+        if (!win && opp <= ours) opp = ours + 1 + Math.floor(Math.abs(R.gauss()) * 1.5);
+        w = win ? ours : opp; l = win ? opp : ours;
+      }
       // 15차: 경기 하이라이트
       let hl = '';
       if (win && bs && bs.HR && w - l <= 2) hl = '결승 홈런!';
@@ -2309,7 +2318,11 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         st.car.intlRec = (st.car.intlRec || []).concat([{ year: c.year, age: me.age - 1, name: T.name, result: r.result, rank: r.rank, field: r.field, medal: r.medal, awards: r.awards.slice(), bat: r.bat ? Object.assign({}, r.bat, { G: gB }) : null, pit: r.pit ? Object.assign({}, r.pit, { G: gP }) : null }]);
         if (r.medal) st.car.awList.push(`${c.year} ${T.name} ${r.result}`);
         for (const a of r.awards) { st.car.awList.push(`${c.year} ${T.name} ${a}`); story(st, `${c.year} ${T.name} ${a}.`); }
-        if (r.exempt && !me.milDone) { me.milDone = true; me.milExempt = `${c.year} ${T.name} ${r.result}`; r.milGranted = true; story(st, `${T.name} ${r.result}로 병역 혜택을 받았다.`); }
+        if (r.exempt && !me.milDone) {
+          me.milDone = true; me.milExempt = `${c.year} ${T.name} ${r.result}`; r.milGranted = true; story(st, `${T.name} ${r.result}로 병역 혜택을 받았다.`);
+          // 47차: 같은 겨울에 이미 올라와 있던 입영 통지·입대 권유는 취소 (27세 시즌 혜택이 28세 입영보다 늦게 처리되던 문제)
+          st.pending = st.pending.filter(p => p.id !== 'enlist');
+        }
         st._intlRes = r;
         // 24차: 결과는 대회 화면에서 경기가 다 끝난 뒤 공개 — 여기서는 합류만 알린다
         r.closing = /금메달|^우승/.test(r.result) ? '시상대 맨 위에서 애국가가 울려 퍼졌다.' : r.medal ? '시상대에 올라 메달을 목에 걸었다. 다음엔 맨 위에 서겠다.' : '아쉬움을 안고 귀국길에 올랐다.';
@@ -2378,6 +2391,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       safe: (st, me, c) => c.due ? 0 : c.opts.length - 1,
       res: (st, me, i, c) => {
         const o = c.opts[i];
+        if (me.milDone) return '병역 혜택으로 입대할 필요가 없어졌다.';   // 47차: 안전장치
         if (o === 'later') return '"그래, 1년만 더 버텨보자."';
         enlist(st, o);
         return o === 'sangmu' ? '군복 위에 상무 유니폼. 야구는 계속된다.' : '머리를 짧게 깎았다. 2년 뒤를 기약한다.';

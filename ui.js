@@ -190,44 +190,102 @@
     return pageShell('패치노트', CT.patches.map(d => `<div class="panel guide-sec"><h3>${esc(d.date)}</h3><ul class="patch-list">${d.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join(''));
   }
 
-  // 39차: 역대 최고점수 TOP 50 — 1~3위는 시상대 위에서 금·은·동 메달을 건다. (지금은 이 기기 기록, 온라인 순위는 배포 때)
-  const recKey = (r, i) => String(r.date || 'r' + i);
-  function rankPanel(recs) {
+  // 39차: 역대 최고점수 TOP 50 — 1~3위는 시상대 위에서 금·은·동 메달을 건다.
+  // 47차: content.js 의 leaderboard(url·key)가 채워져 있으면 온라인(Supabase) 전체 순위, 비어 있거나 연결이 안 되면 이 기기 기록
+  const LB = (CT && CT.leaderboard) || {};
+  const LB_ON = !!(LB.url && LB.key);
+  App.lb = { list: null, at: 0, err: false, loading: false };
+  function lbFetch(path, opt) {
+    opt = opt || {};
+    // 예전 anon 키(eyJ…)는 Authorization 에도 넣고, 새 publishable 키(sb_publishable_…)는 apikey 헤더만 쓴다
+    const headers = Object.assign({ apikey: LB.key, 'Content-Type': 'application/json' }, /^eyJ/.test(LB.key) ? { Authorization: 'Bearer ' + LB.key } : {}, opt.headers || {});
+    return fetch(LB.url.replace(/\/+$/, '') + '/rest/v1/' + path, Object.assign({}, opt, { headers }))
+      .then(r => { if (!r.ok) throw new Error('leaderboard ' + r.status); return r.text(); })
+      .then(t => t ? JSON.parse(t) : null);   // 저장(201)은 빈 응답으로 온다
+  }
+  const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
+  function lbLoad(force) {
+    if (!LB_ON || App.lb.loading) return;
+    if (!force && App.lb.at && Date.now() - App.lb.at < 60000) return;
+    App.lb.loading = true;
+    lbFetch(`top50?select=id,name,pos,two_way,score,war,hof,avatar,color&order=score.desc,id.asc&limit=${REC_MAX}`)
+      .then(rows => { App.lb.list = (rows || []).map(lbRow); App.lb.err = false; })
+      .catch(() => { App.lb.err = true; })
+      .then(() => { App.lb.loading = false; App.lb.at = Date.now(); if (App.view === 'home') render(); });
+  }
+  // 은퇴 때: 온라인 50위 점수보다 높을 때만 보낸다 (대부분의 판은 서버에 아무것도 보내지 않는다)
+  function lbSubmit(st) {
+    const f = st.final;
+    st._lb = 'checking';
+    lbFetch(`top50?select=score&order=score.desc,id.asc&offset=${REC_MAX - 1}&limit=1`)
+      .then(rows => {
+        const cut = rows && rows.length ? +rows[0].score : -1;
+        if (f.score <= cut) { st._lb = 'out'; return; }
+        const c = cardData(st);
+        return lbFetch('top50', { method: 'POST', body: JSON.stringify({ name: f.name, pos: f.pos, two_way: !!f.twoWay, score: f.score, war: Math.round(f.war * 10) / 10, hof: !!(f.hof && f.hof.in), avatar: c.avatar, color: c.color, card: c }), headers: { Prefer: 'return=minimal' } })
+          .then(() => lbFetch(`top50?select=id&score=gt.${f.score}&limit=${REC_MAX}`))
+          .then(rows => { st._lb = 'in'; st._lbRank = (rows ? rows.length : 0) + 1; });
+      })
+      .catch(() => { st._lb = 'error'; })
+      .then(() => { App.lb.at = 0; if (App.view === 'retire' && App.st === st) render(); });   // 홈으로 가면 순위표를 새로 받는다
+  }
+  const recKey = (r, i) => r.online ? 'o' + r.id : String(r.date || 'r' + i);
+  function rankPanel(recs, sub) {
     const top = recs.slice().sort((a, b) => b.score - a.score).slice(0, REC_MAX);
-    if (!top.length) return `<div class="panel rank50"><h3>역대 최고점수 TOP 50 <span class="tiny muted">이 기기 기록</span></h3>
+    const head = `<h3>역대 최고점수 TOP 50 <span class="tiny muted">${esc(sub)}</span></h3>`;
+    if (!top.length) return `<div class="panel rank50">${head}
       <div class="podium empty">${[[1, 'silver'], [0, 'gold'], [2, 'bronze']].map(([i, m]) => `<div class="pod pod-${m}"><div class="pod-who"><b class="pod-name muted">?</b></div><div class="pod-step"><span>${i + 1}</span></div></div>`).join('')}</div>
-      <div class="muted small" style="margin-top:8px">아직 기록이 없다. 은퇴한 커리어 점수가 TOP 50에 들면 여기 오른다 — 시상대 맨 위에 서 보자.</div></div>`;
+      <div class="muted small" style="margin-top:8px">${LB_ON && !App.lb.list && !App.lb.err ? '순위를 불러오는 중…' : '아직 기록이 없다. 은퇴한 커리어 점수가 TOP 50에 들면 여기 오른다 — 시상대 맨 위에 서 보자.'}</div></div>`;
     const MEDAL = ['gold', 'silver', 'bronze'], MNAME = ['금', '은', '동'];
-    const who = (r, i) => `${esc(Sim.POSNAME[r.pos] || r.pos)}${r.twoWay ? '·이도류' : ''}${r.hof ? ' · 명전' : ''}`;
+    const who = r => `${esc(Sim.POSNAME[r.pos] || r.pos)}${r.twoWay ? '·이도류' : ''}${r.hof ? ' · 명전' : ''}`;
+    const hasCard = r => !!(r.card || r.online);
     const pod = [1, 0, 2].filter(i => top[i]).map(i => {
       const r = top[i], m = MEDAL[i], c = r.card;
+      const av = r.online ? r.avatar : c ? c.avatar : (r.date || 1) % 99991, col = r.online ? r.color : c ? c.color : '#3d4a5c';
       return `<div class="pod pod-${m}">
-        <button class="pod-who" data-act="reccard" data-v="${recKey(r, i)}" ${c ? '' : 'disabled'} aria-label="${i + 1}위 ${esc(r.name)} ${r.score}점${c ? ' — 카드 보기' : ''}">
-          <span class="pod-fig"><canvas class="pod-av" width="16" height="16" data-av="${c ? c.avatar : (r.date || 1) % 99991}" data-color="${esc(c ? c.color : '#3d4a5c')}"></canvas>
+        <button class="pod-who" data-act="reccard" data-v="${esc(recKey(r, i))}" ${hasCard(r) ? '' : 'disabled'} aria-label="${i + 1}위 ${esc(r.name)} ${r.score}점${hasCard(r) ? ' — 카드 보기' : ''}">
+          <span class="pod-fig"><canvas class="pod-av" width="16" height="16" data-av="${+av || 1}" data-color="${esc(col)}"></canvas>
             <span class="pod-medal" title="${MNAME[i]}메달"><i class="rb rb-l"></i><i class="rb rb-r"></i><b>${i + 1}</b></span></span>
-          <b class="pod-name">${esc(r.name)}</b><span class="pod-score num">${r.score}</span><span class="tiny muted">${who(r, i)}</span>
+          <b class="pod-name">${esc(r.name)}</b><span class="pod-score num">${r.score}</span><span class="tiny muted">${who(r)}</span>
         </button>
         <div class="pod-step"><span>${i + 1}</span></div></div>`;
     }).join('');
-    const rest = top.slice(3).map((r, j) => { const i = j + 3; return `<button class="rank-row" data-act="reccard" data-v="${recKey(r, i)}" ${r.card ? '' : 'disabled'}><b class="num rk">${i + 1}</b><span class="spacer"><b>${esc(r.name)}</b> <span class="muted tiny">${who(r, i)} · WAR ${f1(r.war)}</span></span><b class="num">${r.score}</b></button>`; }).join('');
-    return `<div class="panel rank50"><h3>역대 최고점수 TOP 50 <span class="tiny muted">이 기기 기록</span></h3>
+    const rest = top.slice(3).map((r, j) => { const i = j + 3; return `<button class="rank-row" data-act="reccard" data-v="${esc(recKey(r, i))}" ${hasCard(r) ? '' : 'disabled'}><b class="num rk">${i + 1}</b><span class="spacer"><b>${esc(r.name)}</b> <span class="muted tiny">${who(r)} · WAR ${f1(r.war)}</span></span><b class="num">${r.score}</b></button>`; }).join('');
+    return `<div class="panel rank50">${head}
       <div class="podium">${pod}</div>
       ${rest ? `<div class="rank-list">${rest}</div>` : ''}
       <div class="tiny muted" style="margin-top:6px">이름을 누르면 야구카드를 볼 수 있다. 은퇴 후 점수가 TOP 50에 들면 야구카드가 남고, 못 들면 아무 기록도 남지 않는다.</div></div>`;
   }
+  // 홈에 보여 줄 순위표: 온라인이 켜져 있고 불러왔으면 전체 순위, 아니면 이 기기 기록
+  function homeBoard(recs) {
+    if (LB_ON) {
+      lbLoad();
+      if (App.lb.list) return rankPanel(App.lb.list, '전체 플레이어');
+      if (!App.lb.err) return rankPanel([], '전체 플레이어');
+      return rankPanel(recs, '온라인 연결 실패 · 이 기기 기록');
+    }
+    return rankPanel(recs, '이 기기 기록');
+  }
   function drawPodium() {
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
   }
-  function showRecCard(key) {
-    const recs = store.get(KEY_REC, []);
-    const r = recs.find((x, i) => recKey(x, i) === key) || recs.slice().sort((a, b) => b.score - a.score).find((x, i) => recKey(x, i) === key);
-    if (!r || !r.card) return;
-    App._recCard = r.card;
-    const url = drawCard(r.card).toDataURL('image/png');
+  function openCard(name, card) {
+    if (!card || !Array.isArray(card.stats) || !Array.isArray(card.rows)) return;
+    App._recCard = card;
+    const url = drawCard(card).toDataURL('image/png');
     $modal.innerHTML = `<div class="card-overlay" data-act="reccard-close"><div class="card-box">
-      <img src="${url}" alt="${esc(r.name)} 야구카드 (앞·뒤)">
+      <img src="${url}" alt="${esc(name)} 야구카드 (앞·뒤)">
       <div class="row" style="gap:8px;margin-top:10px"><button class="btn" data-act="reccard-save" style="flex:1">이미지 저장</button><button class="btn go" data-act="reccard-close" style="flex:1">닫기</button></div>
     </div></div>`;
+  }
+  function showRecCard(key) {
+    if (/^o\d+$/.test(key || '')) {   // 온라인 기록: 누를 때 카드 한 장만 받는다
+      lbFetch(`top50?select=name,card&id=eq.${key.slice(1)}`).then(rows => { if (rows && rows[0]) openCard(rows[0].name, rows[0].card); }).catch(() => { });
+      return;
+    }
+    const recs = store.get(KEY_REC, []);
+    const r = recs.find((x, i) => recKey(x, i) === key) || recs.slice().sort((a, b) => b.score - a.score).find((x, i) => recKey(x, i) === key);
+    if (r && r.card) openCard(r.name, r.card);
   }
 
   function viewHome() {
@@ -247,7 +305,7 @@
         ${App.admin ? `<button class="btn block small ghost" data-act="admin">${App.dev ? '<span class="admin-on">관리자 모드 ON</span> · 끄기' : '관리자 모드 들어가기'}</button>` : ''}
       </div>
       ${App.dev ? '<div class="panel admin-panel small">관리자 모드: 진행 화면에서 내 선수의 잠재능력(PA)·등급·성장/노화 유형·전성기 시기를, 리그 탭 구단 기록에서 선수 OVR을 볼 수 있다.</div>' : ''}
-      ${rankPanel(recs)}
+      ${homeBoard(recs)}
       <p class="tiny muted" style="text-align:center;margin-top:18px">리그 선수는 2025 시즌 실제 명단 기준(능력치는 가상) · 진행 중인 게임은 이 브라우저에 저장된다</p>`;
   }
 
@@ -995,7 +1053,8 @@
       <div class="panel reveal" id="share-src">
         <div class="big-score"><span>CAREER SCORE</span><b class="num">${f.score}</b>
           ${pct != null ? `<span class="pct-badge">전체 커리어 대비 상위 ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</span>` : `<span class="tiny muted" id="pct-wait">비교 데이터 만드는 중…</span>`}
-          ${st._rank != null ? `<span class="small" style="margin-top:6px">${st._rank ? `🏅 역대 최고점수 <b>${st._rank}위</b> — 야구카드가 TOP 50에 남았다` : '역대 최고점수 TOP 50에는 들지 못했다 — 이 커리어 기록은 남지 않는다'}</span>` : ''}
+          ${LB_ON && st._lb ? `<span class="small" style="margin-top:6px">${st._lb === 'checking' ? '전체 플레이어 TOP 50 순위 확인 중…' : st._lb === 'in' ? `🏅 전체 플레이어 역대 최고점수 <b>${st._lbRank}위</b> — 야구카드가 TOP 50에 남았다` : st._lb === 'out' ? '전체 플레이어 TOP 50에는 들지 못했다 — 이 커리어 기록은 남지 않는다' : '온라인 순위에 연결하지 못했다 — 이 기기 기록에만 남았다'}</span>`
+            : st._rank != null ? `<span class="small" style="margin-top:6px">${st._rank ? `🏅 역대 최고점수 <b>${st._rank}위</b> — 야구카드가 TOP 50에 남았다` : '역대 최고점수 TOP 50에는 들지 못했다 — 이 커리어 기록은 남지 않는다'}</span>` : ''}
         </div>
         <div class="small" style="margin-top:12px;text-align:center">${f.retireAge}세 은퇴 · ${f.seasons}시즌 · 통산 WAR <b>${f1(f.war)}</b>${f.twoWay ? ` (타 ${f1(f.warB)} / 투 ${f1(f.warP)})` : ''}<br>${esc(f.teams.join(' → ') || '프로 무대를 밟지 못했다')}</div>
         ${lines.length ? `<div class="small" style="margin-top:10px;display:grid;gap:4px">${lines.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : ''}
@@ -1100,6 +1159,7 @@
     }
     const top = recs.slice(0, REC_MAX);
     st._rank = mine ? top.indexOf(mine) + 1 : 0;   // 0이면 TOP 50 밖 → 기록 없음
+    if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
     save();   // 39차: 커리어 저장 데이터는 지운다 (화면의 은퇴 결산은 메모리에 남아 있음)
     if (!store.get(KEY_BENCH, null)) buildBench();
