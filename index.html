@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>골글 들고 명전으로</title>
+<meta name="description" content="고교 야구부 벤치 끝자리에서 명예의 전당까지, 야구선수 한 명의 인생을 키우는 게임">
+<script>
+  // 빌드 번호 — 패치를 배포할 때마다 이 숫자만 1 올린다.
+  // 파일 주소에 ?v=번호가 붙어서, 브라우저가 예전 파일과 새 파일을 섞어 쓰지 않는다.
+  window.GAME_BUILD = 1;
+  document.write('<link rel="stylesheet" href="style.css?v=' + window.GAME_BUILD + '">');
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal-root"></div>
+<script>
+  ['data.js', 'sim.js', 'content.js', 'ui.js'].forEach(function (f) { document.write('<script src="' + f + '?v=' + window.GAME_BUILD + '"><\/script>'); });
+</script>
+</body>
+</html>
