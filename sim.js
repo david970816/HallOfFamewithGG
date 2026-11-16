@@ -83,7 +83,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // 23차: 명예의 전당 헌액 기준 (하나라도 달성). peakOVR은 화면 표시 눈금
     hof: { war: 62, mvp: 2, titles: 4, titlesWar: 40, peakOVR: 95, peakWar: 45, hits: 2500, hr: 420, wins: 190, saves: 350, ks: 2600, twoWay: 3 },
     // 11차: 마무리 지정 선수의 마무리 자리 우선 보정, 보직 전환 제안 확률
-    closerBias: 8, roleOffer: { toSP: 0.35, toRP: 0.45, toCL: 0.4 },
+    // 43차: 보직 제안 확대 — toSP 0.35→0.5, toCL 0.4→0.5. spN 선발↔불펜 제안 횟수(1~2→2~3), gap 간격(3→2년), spSta 체력(50→45), spGap 5선발 대비 여유(1→3)
+    //       마무리 제안은 따로: clGap 2년, clEra 리그 ERA보다 이만큼 좋으면(0.8→0.5), clVal 팀 최고 불펜 지수와 이만큼 차이 안이면
+    relief: { clHLD: 0.04, suSV: 0.03, mrSV: 0.005, mrHLD: 0.1, lrHLD: 0.05 },   // 43차: 보직별 세이브·홀드 섞임 (팀 승수 × 구간 비율 × 계수)
+    closerBias: 8, roleOffer: { toSP: 0.5, toRP: 0.45, toCL: 0.5, spN: [2, 3], gap: 2, spSta: 45, spGap: 3, clGap: 2, clEra: 0.5, clVal: 2 },
     // 13차: 포스팅(svc 이상·병역 해결이면 언제든 신청), 해외 FA(faSvc 이상), 고교 미국 직행(usDirect)
     // 21차: 응찰 기준은 '평가값'(현재 OVR 60% + 잠재력 40%, 내부값)으로. mlbEval/npbEval, 가중 WAR mlbWar/npbWar (내부 눈금)
     abroad: { svc: 7, faSvc: 9, maxAge: 33, war: 3, npbOVR: 62, mlbOVR: 63, mlbWar: 3, mlbEval: 68, npbEval: 65, npbWar: 2.5,
@@ -1078,13 +1081,22 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       const ipg = IP(s) / s.GS, cgP = clamp((ipg - 5.7) * 0.04, 0, 0.12), shoP = clamp(0.3 * lgERA / era, 0.05, 0.6);
       s.CG = 0; s.SHO = 0;
       for (let i = 0; i < Math.round(s.GS); i++) if (R() < cgP) { s.CG++; if (R() < shoP) s.SHO++; }
-    } else { s.W = R.int(0, 5); s.L = R.int(0, 5); }
+    } else { s.W = 0; s.L = 0; }
+    // 43차: 불펜으로 던진 구간(마무리·필승조·추격조·롱릴리프)만큼 구원승·구원패 — 선발과 불펜을 오간 시즌도 둘 다 쌓인다
+    const relief = ((acc.cl || 0) + (acc.su || 0) + (acc.mr || 0) + (acc.lr || 0)) / 3;
+    if (relief > 0) { s.W += Math.round(relief * R.range(0, 5.5)); s.L += Math.round(relief * R.range(0, 5.5)); }
     // 15차: 평균자책이 나쁠수록 블론이 크게 늘고 세이브 기회도 줄어든다 (ERA 5 마무리가 30세이브 하던 문제)
     // 20차: 더 조임 — ERA 4.5 이상 마무리는 세이브 기회 자체도 줄어든다 (감독이 중요한 상황에 덜 씀)
     const blown = clamp(0.04 + (era - 2.2) * 0.12, 0.03, 0.6);
     const trustCL = clamp(1 - (era - 3.6) * 0.18, 0.45, 1);
-    if (acc.cl) s.SV = Math.round(wins * 0.42 * (acc.cl / 3) * (1 - blown) * trustCL * R.range(0.9, 1.08));
-    if (acc.su) s.HLD = Math.round(wins * 0.35 * (acc.su / 3) * (1 - blown) * R.range(0.85, 1.15));
+    // 43차: 구간별 보직(마무리 CL·필승조 SU·추격조 MR)에 따라 세이브와 홀드를 함께 쌓는다.
+    //   마무리도 동점·1점 차 8회에 나와 홀드를 가끔, 필승조도 마무리가 쉬는 날 세이브를 가끔, 추격조도 홀드를 조금 올린다.
+    //   (예전엔 마무리→필승조로 바뀌어도 필승조가 아닌 추격조로 밀리면 홀드가 0이었다)
+    const H = BAL.relief, mr = acc.mr || 0, lr = acc.lr || 0;
+    const sv = wins * ((acc.cl || 0) / 3 * 0.42 * trustCL + (acc.su || 0) / 3 * H.suSV + (mr + lr) / 3 * H.mrSV);
+    const hld = wins * ((acc.cl || 0) / 3 * H.clHLD + (acc.su || 0) / 3 * 0.35 + mr / 3 * H.mrHLD + lr / 3 * H.lrHLD);
+    s.SV = Math.round(sv * (1 - blown) * R.range(0.9, 1.08));
+    s.HLD = Math.round(hld * (1 - blown) * R.range(0.85, 1.15));
   }
 
   // ---------- 내 선수 프로 시즌 ----------
@@ -1229,6 +1241,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         s = simPitch(p, Math.round(ip * 3), rs); s.G = Math.round(ip * 1.05);
         if (pr.kind === 'CL') m.pacc.cl++;
         if (pr.kind === 'SU') m.pacc.su++;
+        if (pr.kind === 'MR') m.pacc.mr = (m.pacc.mr || 0) + 1;   // 43차: 추격조도 홀드를 조금
+        if (pr.kind === 'LR') m.pacc.lr = (m.pacc.lr || 0) + 1;   // 43차: 로테이션에서 밀린 선발(롱릴리프)도 불펜 기록
         // 8차: 불펜은 마무리만 '주전'으로 친다 (셋업까지 치면 프로 투수 100%가 주전 도달)
         if (me.role === 'P' && pr.kind === 'CL') starterSeg = true;
       }
@@ -1768,25 +1782,33 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // 12차: 병역 — 입영 기한이 되면 입대(상무/현역), 그 전에도 1군 자리가 없으면 가끔 조기 입대 제안
     const M = BAL.mil;
     if (!leaving && !me.milDone && me.age >= M.deadline) { queue(st, 'enlist', { due: true }); leaving = true; }
-    else if (!leaving && !me.milDone && !me.abroad && me.age >= M.earlyAge[0] && me.age <= M.earlyAge[1] && !ls.starter && R.chance(M.earlyP)) { queue(st, 'enlist', { due: false }); }
+    // 44차: 상무 기준(OVR)을 넘으면 매년 상무 지원 권유. 45차: 병역 미필이면 기준과 상관없이 매년 겨울 입대 선택지(현역, 기준이 되면 상무도) — 미룰 수 있다
+    else if (!leaving && !me.milDone && !me.abroad && me.age < M.deadline) { queue(st, 'enlist', { due: false, push: true }); }
     // 13차: 해외 진출은 자동 제안 대신 포스팅(직접 신청)·해외 FA(FA 이벤트 안)로
     const abroadOK = false;
     // 밸런스 봇용: 봇은 버튼을 못 누르므로 자격이 되면 가끔 포스팅을 신청한 것으로 친다
     if (OPT.botPost && !leaving && canPost(st) && R.chance(0.3)) { me.flags.postYear = st.year; queue(st, 'posting'); }
     // 11차: 투수 보직 전환 제안 (불펜→선발, 선발→불펜, 불펜→마무리)
     // 15차: 보직 전환 제안은 커리어 통틀어 1~2번(랜덤), 최소 3년 간격
-    if (me.roleOffersLeft == null) me.roleOffersLeft = R.int(1, 2);
-    const roleOK = me.roleOffersLeft > 0 && (me.flags.roleOfferYear || 0) <= st.year - 3;
+    // 43차: 선발↔불펜 제안은 2~3번·2년 간격, 마무리 제안은 따로 센다(횟수 제한 없음, 2년 간격). 조건도 완화 (BAL.roleOffer)
+    const O = BAL.roleOffer;
+    if (me.roleOffersLeft == null) { me.roleOffersLeft = R.int(O.spN[0], O.spN[1]); me.flags.ro43 = true; }
+    else if (!me.flags.ro43) { me.flags.ro43 = true; me.roleOffersLeft += 1; }   // 43차 이전 저장: 한 번 더
+    const roleOK = me.roleOffersLeft > 0 && (me.flags.roleOfferYear || 0) <= st.year - O.gap;
+    const clOK = (me.flags.clOfferYear || 0) <= st.year - O.clGap;
     const qLen = st.pending.length;
-    if (roleOK && !leaving && !abroadOK && me.role === 'P' && !me.twoWay && team) {
-      const O = BAL.roleOffer, e = effR(me);
-      const spO = team.act.map(id => st.lg.p[id]).filter(p => p && p.pos === 'SP').map(p => ovrAt(p.r, 'SP')).sort((a, b) => b - a);
+    if (!leaving && !abroadOK && me.role === 'P' && !me.twoWay && team) {
+      const e = effR(me);
+      const tps = team.act.map(id => st.lg.p[id]).filter(Boolean);
+      const spO = tps.filter(p => p.pos === 'SP').map(p => ovrAt(p.r, 'SP')).sort((a, b) => b - a);
       const fifth = spO[4] != null ? spO[4] : 40;
-      const eraBad = ls.era != null && ls.era > st.lg.lgERA + 0.8, eraGood = ls.era != null && ls.era < st.lg.lgERA - 0.8;
-      if (me.pos === 'RP' && me.r.sta >= 50 && ovrAt(e, 'SP') >= fifth - 1 && R.chance(O.toSP)) queue(st, 'toSP');
-      else if (me.pos === 'SP' && (ls.gs || 0) >= 5 && me.age >= 29 && (eraBad || ovrAt(e, 'SP') < fifth - 2 || me.r.sta < 45) && R.chance(O.toRP)) queue(st, 'toRP');
-      else if (me.pos === 'RP' && !me.flags.closer && (ls.cl || 0) < 2 && eraGood && R.chance(O.toCL)) queue(st, 'toCL');
+      const topRP = tps.filter(p => p.pos === 'RP').reduce((a, p) => Math.max(a, valAt(p.r, 'RP')), 0);
+      const eraBad = ls.era != null && ls.era > st.lg.lgERA + 0.8, eraGood = ls.era != null && ls.era < st.lg.lgERA - O.clEra;
+      if (roleOK && me.pos === 'RP' && me.r.sta >= O.spSta && ovrAt(e, 'SP') >= fifth - O.spGap && R.chance(O.toSP)) queue(st, 'toSP');
+      else if (roleOK && me.pos === 'SP' && (ls.gs || 0) >= 5 && me.age >= 29 && (eraBad || ovrAt(e, 'SP') < fifth - 2 || me.r.sta < 45) && R.chance(O.toRP)) queue(st, 'toRP');
       if (st.pending.length > qLen) { me.roleOffersLeft--; me.flags.roleOfferYear = st.year; }
+      // 마무리: 지난 시즌 ERA가 좋거나, 불펜 능력이 팀 최고 불펜 투수와 비슷하면
+      else if (clOK && me.pos === 'RP' && !me.flags.closer && (ls.cl || 0) < 2 && (eraGood || valAt(e, 'RP') >= topRP - O.clVal) && R.chance(O.toCL)) { queue(st, 'toCL'); me.flags.clOfferYear = st.year; }
     }
     // 31차: 구단 주도 트레이드 — KBO 입단 후 2시즌 안에 주전을 못 잡으면 70% 확률로 다른 구단, 3시즌 안에 못 잡으면 약팀으로
     if (!me.abroad && cfgOf(st.lg).id === 'KBO') {
@@ -1877,7 +1899,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   // 상대별 한국 승리 확률 (대표팀 기준), 대회별 대진
   const INTL_OPP = { 홍콩: 0.95, 태국: 0.93, 필리핀: 0.93, 중국: 0.85, 대만: 0.58, '일본(사회인)': 0.6, 일본: 0.42, 미국: 0.4, 도미니카: 0.42, 베네수엘라: 0.45, 쿠바: 0.55, 멕시코: 0.52, 이스라엘: 0.68, 호주: 0.66, 체코: 0.8, 네덜란드: 0.6, 푸에르토리코: 0.45 };
   const INTL_FMT = {
-    AG: { group: ['태국', '홍콩', '대만'], ko: [['준결승', ['일본(사회인)', '대만', '중국']], ['결승', ['대만', '일본(사회인)']]], need: 2 },
+    AG: { group: ['태국', '홍콩', '대만'], ko: [['준결승', ['일본(사회인)', '대만', '중국']], ['결승', ['대만', '일본(사회인)']]], need: 2, boost: 0.07 },   // 43차: 경기마다 승률 +7%p (금메달 약 39% → 약 48%)
     OLY: { group: ['이스라엘', '미국', '도미니카'], ko: [['준결승', ['일본', '미국', '멕시코']], ['결승', ['일본', '미국', '도미니카']]], bronze: ['멕시코', '도미니카', '미국'], need: 1 },   // 29차: 2→1 (도쿄 올림픽처럼 조별리그는 시드 결정 성격, 메달 확률 약 35%→60%)
     P12: { group: ['호주', '쿠바', '대만'], ko: [['슈퍼라운드', ['멕시코', '미국', '베네수엘라']], ['결승', ['일본', '미국']]], need: 2 },
     WBC: { group: ['체코', '호주', '일본'], ko: [['8강', ['쿠바', '네덜란드', '멕시코']], ['4강', ['미국', '도미니카', '베네수엘라']], ['결승', ['일본', '미국', '푸에르토리코']]], need: 2 },
@@ -1900,7 +1922,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
           line.push(`${IP(ps).toFixed(1).replace('.0', '')}이닝 ${ps.ER}실점 ${ps.K}K`); bonus += ps.ER === 0 ? (start ? 0.06 : 0.03) : ps.ER >= 3 ? -0.05 : 0;
         }
       }
-      const win = R() < clamp((INTL_OPP[opp] || 0.5) + bonus, 0.05, 0.97);
+      const win = R() < clamp((INTL_OPP[opp] || 0.5) + bonus + (F.boost || 0), 0.05, 0.97);
       const w = Math.max(1, Math.round(4.5 + R.gauss() * 2.5)), l = Math.max(0, Math.min(w - 1, Math.round(w - 1 - Math.abs(R.gauss()) * 2.5)));
       // 15차: 경기 하이라이트
       let hl = '';
@@ -2349,8 +2371,9 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       // 12차: 입대 (기한 도래 또는 조기 입대 제안)
       id: 'enlist', forced: true, cat: '병역', who: '구단 매니저',
       prep: (st, me, c) => { c.sangmu = myOVR(me) >= BAL.mil.sangmuOVR; },
-      text: (st, me, c) => (c.due ? '"입영 통지서가 나왔다. 더는 미룰 수 없다."' : '"1군 자리가 쉽게 안 난다. 지금 군 문제를 해결하는 것도 방법이야."')
-        + (c.sangmu ? ' 상무에서 받아줄 수 있다는 연락이 왔다.' : ' 상무 지원 기준에는 아직 못 미친다.'),
+      text: (st, me, c) => (c.due ? '"입영 통지서가 나왔다. 더는 미룰 수 없다."' : c.push && c.sangmu ? `"상무 지원 기준을 넘었다. 입영 기한(${BAL.mil.deadline}세)까지 ${BAL.mil.deadline - me.age}년 — 올해 상무에 지원해 보는 건 어때?"`
+        : c.push ? `"병역이 아직 남아 있다. 입영 기한(${BAL.mil.deadline}세)까지 ${BAL.mil.deadline - me.age}년 — 지금 현역으로 다녀오는 것도 방법이다."` : '"1군 자리가 쉽게 안 난다. 지금 군 문제를 해결하는 것도 방법이야."')
+        + (c.push && c.sangmu ? '' : c.sangmu ? ' 상무에서 받아줄 수 있다는 연락이 왔다.' : ' 상무 지원 기준에는 아직 못 미친다.'),
       ch: (st, me, c) => { c.opts = [c.sangmu ? 'sangmu' : null, 'active', c.due ? null : 'later'].filter(Boolean); return c.opts.map(o => ({ sangmu: '상무 입단 (퓨처스리그에서 계속 뛴다)', active: '현역 입대 (2년간 야구 중단)', later: '아직은 미룬다' }[o])); },
       safe: (st, me, c) => c.due ? 0 : c.opts.length - 1,
       res: (st, me, i, c) => {
@@ -2560,7 +2583,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       res: (st, me, i) => { if (i === 0) { me.care += 1; return '오랜만에 가족과 여행을 다녀왔다.'; } addR(me, R.pick(mainKeys(me)), 3); me.care -= 1; return '도미니카의 뜨거운 햇볕 아래서 공을 던졌다.'; } },
 
     // ---------------- 포지션 ----------------
-    { id: 'closer', cat: '포지션', who: '감독', cond: (st, me) => me.stage === 'pro' && me.role === 'P' && me.pos === 'SP' && me.r.sta < 55 && me.r.vel >= 55 && (me.roleOffersLeft == null || me.roleOffersLeft > 0) && (me.flags.roleOfferYear || 0) <= st.year - 3, text: '"선발로는 체력이 아쉽다. 마무리로 가보는 건 어때?"', ch: ['마무리 전향을 수락', '선발을 고수한다'], safe: 0,
+    { id: 'closer', cat: '포지션', who: '감독', cond: (st, me) => me.stage === 'pro' && me.role === 'P' && me.pos === 'SP' && me.r.sta < 55 && me.r.vel >= 55 && (me.roleOffersLeft == null || me.roleOffersLeft > 0) && (me.flags.roleOfferYear || 0) <= st.year - BAL.roleOffer.gap, text: '"선발로는 체력이 아쉽다. 마무리로 가보는 건 어때?"', ch: ['마무리 전향을 수락', '선발을 고수한다'], safe: 0,
       res: (st, me, i) => { me.roleOffersLeft = Math.max(0, (me.roleOffersLeft == null ? 2 : me.roleOffersLeft) - 1); me.flags.roleOfferYear = st.year; if (i === 0) { me.pos = 'RP'; me.flags.closer = true; story(st, `${me.age}세, 마무리 전향.`); return '9회의 마운드가 기다린다.'; } if (R.chance(0.5)) { me.trust -= 10; me.lvl = 2; return '감독이 고개를 저었다.'; } return '"그럼 결과로 보여줘."'; } },
     // 11차: 보직 전환 제안 (겨울에 조건이 맞으면 확률로 등장)
     { id: 'toSP', forced: true, cat: '보직', who: '투수코치', text: (st, me) => `"불펜에서 보여준 공이면 선발도 된다. 내년엔 로테이션에 넣어볼까?"${me.flags.closer ? ' 마무리 자리는 내려놓아야 한다.' : ''}`, ch: ['선발로 전환한다', '불펜에 남는다'], safe: 1,
