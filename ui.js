@@ -596,12 +596,12 @@
     const curTxt = cur ? `<b>${cur.map(k => Sim.LABEL[k]).join(' · ')}</b> 집중 <span class="muted">· ${tf2On ? `${me.tf2.until}세 시즌까지` : `${Sim.BAL.trainFocus.untilAge - 1}세 시즌까지`}</span>` : '<span class="muted">지금은 특별히 집중하는 능력치가 없다</span>';
     const keys = me.twoWay ? Sim.ALL : Sim.mainKeys(me);
     const pick = App.tfPick || [];
-    return `<div class="panel small"><div class="row"><b>육성 방향</b><span class="spacer"></span><span class="tiny muted">방향 바꾸기 남은 ${left}회</span></div>
+    return `<div class="panel small"><div class="row"><b>훈련 부스트</b><span class="spacer"></span><span class="tiny muted">부스트 바꾸기 남은 ${left}회</span></div>
       <div style="margin-top:4px">${curTxt}</div>
       ${left > 0 ? (App.tfOpen ? `<div class="seg wrap" style="margin-top:8px">${keys.map(k => `<button class="${pick.indexOf(k) >= 0 ? 'on' : ''}" data-act="tf-pick" data-v="${k}">${Sim.LABEL[k]}</button>`).join('')}</div>
         <div class="tiny muted" style="margin:6px 0">새 강점 두 개를 고르면 그쪽 잠재력이 오르고(+), 지금 가장 높은 강점 두 개의 잠재력은 조금 내려간다. 이후 ${F.seasons}시즌 동안 고른 능력치가 더 잘 오른다.</div>
-        <div class="row" style="gap:8px"><button class="btn small" data-act="tf-close">취소</button><button class="btn small primary" data-act="tf-apply" ${pick.length === 2 ? '' : 'disabled'}>이 방향으로 바꾸기</button></div>`
-        : `<button class="btn small" data-act="tf-open" style="margin-top:8px">육성 방향 바꾸기</button>`) : ''}</div>`;
+        <div class="row" style="gap:8px"><button class="btn small" data-act="tf-close">취소</button><button class="btn small primary" data-act="tf-apply" ${pick.length === 2 ? '' : 'disabled'}>이 부스트로 바꾸기</button></div>`
+        : `<button class="btn small" data-act="tf-open" style="margin-top:8px">훈련 부스트 바꾸기</button>`) : ''}</div>`;
   }
   // ---------- 프로필: 계약·구종 ----------
   function minorName(st) { const c = Sim.cfgOf(st.lg); return c.id === 'KBO' ? '2군(퓨처스)' : c.minor; }

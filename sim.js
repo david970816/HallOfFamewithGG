@@ -2086,8 +2086,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     for (const k of others) me.pa[k] = Math.max(Math.ceil(me.r[k]) + 1, me.pa[k] - F.paDown);
     me.tf2 = { keys, until: me.age + F.seasons - 1 };
     me.tfChanges--;
-    story(st, `${me.age}세, 육성 방향을 바꿨다. 이제 ${keys.map(k => LABEL[k]).join('·')}에 집중한다.`);
-    return true;
+    return true;   // 58차: 인생 이야기에는 남기지 않는다
   }
   function canPost(st) {
     const me = st.me, A = BAL.abroad;
