@@ -452,3 +452,10 @@ table.lg tr.me td { background: rgba(196,53,43,.1); font-weight: 800; }
 .card-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(10,12,20,.85); animation: fade .25s ease both; }
 .card-box { width: min(760px, 100%); max-height: 100%; overflow: auto; }
 .card-box img { width: 100%; height: auto; display: block; border-radius: 10px; }
+
+/* 51차: 새 공지 팝업 */
+.notice-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(10,12,20,.6); animation: fade .25s ease both; }
+.notice-pop { width: min(420px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--paper); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 18px 16px; border-top: 5px solid var(--goldb); }
+.notice-pop-kicker { font-size: 12px; font-weight: 800; color: var(--red); letter-spacing: .02em; margin-bottom: 2px; }
+.notice-pop h3 { margin: 4px 0 8px; font-size: 18px; }
+.notice-pop-body p { margin: 0 0 8px; font-size: 14px; line-height: 1.6; color: var(--ink2); }

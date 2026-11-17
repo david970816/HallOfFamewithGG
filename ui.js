@@ -185,6 +185,19 @@
     return pageShell('공지사항', CT.notices.length ? CT.notices.map(n => `<div class="panel guide-sec"><div class="tiny muted">${esc(n.date)}</div><h3>📢 ${esc(n.title)}</h3>${n.body.map(p => `<p>${esc(p)}</p>`).join('')}${n.highlight ? `<p class="notice-hl">${esc(n.highlight)}</p>` : ''}</div>`).join('')
       : '<div class="panel muted small">공지사항이 없다.</div>');
   }
+  // 51차: 새 공지 팝업 — 가장 최신 공지 하나를 보여 주고, 닫거나 '공지사항 전체 보기'를 누르면 본 것으로 기록 (빨간 점도 사라짐)
+  function noticeModal() {
+    const n = CT.notices[0];
+    if (!n) { App.noticePop = false; return; }
+    const more = CT.notices.length > 1;
+    $modal.innerHTML = `<div class="notice-overlay" data-act="notice-close" role="dialog" aria-modal="true" aria-labelledby="notice-pop-title"><div class="notice-pop">
+      <div class="notice-pop-kicker">📢 공지사항</div>
+      <div class="tiny muted">${esc(n.date)}</div>
+      <h3 id="notice-pop-title">${esc(n.title)}</h3>
+      <div class="notice-pop-body">${n.body.map(p => `<p>${esc(p)}</p>`).join('')}${n.highlight ? `<p class="notice-hl">${esc(n.highlight)}</p>` : ''}</div>
+      <div class="row" style="gap:8px;margin-top:12px">${more ? '<button class="btn" data-act="notice-all" style="flex:1">공지사항 전체 보기</button>' : ''}<button class="btn go" data-act="notice-close" style="flex:1">확인</button></div>
+    </div></div>`;
+  }
   function viewPatch() {
     if (!CT.patches.length) return pageShell('패치노트', '<div class="panel muted small">아직 패치노트가 없다.</div>');
     return pageShell('패치노트', CT.patches.map(d => `<div class="panel guide-sec"><h3>${esc(d.date)}</h3><ul class="patch-list">${d.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join(''));
@@ -1356,6 +1369,7 @@
     if (App.view === 'home') { startHero(); drawPodium(); }
     if (App.view === 'main' || App.view === 'retire') afterCard();
     if (App.view !== 'main') $modal.innerHTML = '';
+    if (App.view === 'home' && App.noticePop) noticeModal();   // 51차: 홈이 다시 그려져도 공지 팝업 유지
     if (App.view === 'post' || App.view === 'result' || App.view === 'intl') maybeTrophy();
     if (App.view === 'retire' && App.st && App.st.final && App.st.final.hof && App.st.final.hof.in && !App.st._hofSeen) showHof();
   }
@@ -1460,6 +1474,8 @@
       case 'share': shareImage(); break;
       case 'cardimg': cardImage(); break;
       case 'reccard': showRecCard(v); break;
+      case 'notice-close': if (el.classList.contains('notice-overlay') && e.target.closest('.notice-pop')) break; App.noticePop = false; markSeen('notice'); $modal.innerHTML = ''; render(); break;
+      case 'notice-all': App.noticePop = false; markSeen('notice'); App.view = 'notice'; render(); window.scrollTo(0, 0); break;
       case 'reccard-save': if (App._recCard) cardImage(App._recCard); break;
       case 'reccard-close': if (el.classList.contains('card-overlay') && e.target.closest('.card-box')) break; $modal.innerHTML = ''; break;
       case 'hof-ok': if (e.target.closest('.hof-box') && !e.target.closest('[data-act="hof-ok"].btn')) break; App.st._hofSeen = true; save(); $modal.innerHTML = ''; window.scrollTo(0, 0); break;
@@ -1536,5 +1552,7 @@
 
   // 디버그·테스트용 핸들
   window.__app = App;
+  // 51차: 게임에 처음 들어올 때 아직 안 본 공지가 있으면 팝업으로 알린다
+  if (CT.notices.length && isNew('notice')) App.noticePop = true;
   render();
 })();
