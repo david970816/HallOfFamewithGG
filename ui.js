@@ -14,11 +14,11 @@
   };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  // 33차: 관리자 모드는 주인만 — 주소에 ?admin=비밀키 로 한 번 들어오면 이 브라우저에 기억된다(?admin=off 로 해제).
-  // 코드에는 비밀키 대신 SHA-256 해시만 둔다. (클라이언트 게임이라 완벽한 보안은 아니고, 일반 플레이어에게 안 보이게 하는 용도)
-  const KEY_ADMIN = 'dugout_admin';
-  const ADMIN_HASH = 'ac905fc92f16f2064846e718494910338bd79b4f6e57022b45e6e8471e440258';
-  const isAdmin = store.get(KEY_ADMIN, null) === ADMIN_HASH;
+  const KEY_ADMIN = 'dugout_admin2';
+  const ADMIN_HASH = 'bd54c316efd8aed7048bfb6d52aa1c5acab855674870e56c896e495be52baeec';
+  try { localStorage.removeItem('dugout_admin'); } catch (e) { }
+  const sha256 = s => crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
+  const isAdmin = false;
   const App = {
     view: 'home', st: null, admin: isAdmin, dev: isAdmin && !!store.get(KEY_DEV, false), flipped: false, tab: 'career', lgCat: 'HR', res: null, reaction: null,
     create: null,
@@ -217,8 +217,6 @@
       .then(r => { if (!r.ok) throw new Error('leaderboard ' + r.status); return r.text(); })
       .then(t => t ? JSON.parse(t) : null);   // 저장(201)은 빈 응답으로 온다
   }
-  // 50차: 이용 통계 (관리자 화면용) — 접속(visit)·선수 생성(create)·은퇴(retire)를 날짜별로 센다.
-  // 관리자 브라우저와 내 컴퓨터(localhost)에서 한 플레이는 세지 않는다. 서버 쪽은 proto/supabase-stats.sql
   const LOCALHOST = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !window.__countLocal;   // __countLocal: 테스트 페이지용
   function bump(k) {
     if (!LB_ON || App.admin || LOCALHOST || /[?&]admin=/.test(location.search)) return;
@@ -1252,7 +1250,7 @@
     const top = all.filter(r => keepAll.indexOf(r) >= 0 || keepSeason.indexOf(r) >= 0);
     st._rank = keepAll.indexOf(mine) + 1;      // 역대 순위 (0이면 TOP 20 밖)
     st._srank = keepSeason.indexOf(mine) + 1;  // 이번 시즌 순위 (0이면 TOP 50 밖)
-    bump('retire');   // 50차: 이용 통계
+    bump('retire');
     if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
     save();   // 39차: 커리어 저장 데이터는 지운다 (화면의 은퇴 결산은 메모리에 남아 있음)
@@ -1582,14 +1580,12 @@
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - last > 60000) tick(); });
   })();
 
-  // 50차: 접속 1회 (같은 탭에서 새로고침은 다시 세지 않는다)
   (function countVisit() {
     let seen = false;
     try { seen = sessionStorage.getItem('dugout_visit') === '1'; sessionStorage.setItem('dugout_visit', '1'); } catch (e) { }
-    if (!seen) bump('visit');
+    if (!seen) setTimeout(() => bump('visit'), 1500);
   })();
 
-  // 33차: ?admin=비밀키 → 이 브라우저를 관리자로 기억, ?admin=off → 해제. 처리 후 주소에서 키를 지운다.
   (function adminLink() {
     let q = null;
     try { q = new URLSearchParams(location.search).get('admin'); } catch (e) { }
@@ -1597,11 +1593,18 @@
     const clean = () => { try { const u = new URL(location.href); u.searchParams.delete('admin'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } catch (e) { } };
     if (q === 'off') { store.del(KEY_ADMIN); store.set(KEY_DEV, false); App.admin = false; App.dev = false; clean(); render(); return; }
     if (!(window.crypto && crypto.subtle)) { clean(); return; }
-    crypto.subtle.digest('SHA-256', new TextEncoder().encode(q)).then(buf => {
-      const h = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-      if (h === ADMIN_HASH) { store.set(KEY_ADMIN, ADMIN_HASH); App.admin = true; }
+    sha256(q).then(h => {
+      if (h === ADMIN_HASH) { store.set(KEY_ADMIN, q); App.admin = true; App.dev = !!store.get(KEY_DEV, false); }
       clean(); render();
     }).catch(clean);
+  })();
+  (function adminCheck() {
+    const k = store.get(KEY_ADMIN, null);
+    if (typeof k !== 'string' || !k || !(window.crypto && crypto.subtle)) return;
+    sha256(k).then(h => {
+      if (h === ADMIN_HASH) { App.admin = true; App.dev = !!store.get(KEY_DEV, false); render(); }
+      else store.del(KEY_ADMIN);
+    }).catch(() => { });
   })();
 
   // 디버그·테스트용 핸들
