@@ -15,6 +15,15 @@ const GAME_DATA = {
     { id: 'HH',   name: '한화', color: '#ff6600', win: 0.407, bat: 102, pit: 100 },
     { id: 'KW',   name: '키움', color: '#820024', win: 0.357, bat: 96,  pit: 93 },
   ],
+  // 52차: 연고 지역과 지역 명문고 (고교 '명문'을 고르면 이 중에서 고른다. 연고 구단이 드래프트에서 우선 관심)
+  regions: { LG: '서울', DS: '서울', KW: '서울', SSG: '인천', KT: '수원', HH: '대전', SS: '대구', LT: '부산', KIA: '광주', NC: '창원' },
+  eliteSchools: [
+    { name: '덕수고', team: 'DS' }, { name: '충암고', team: 'DS' }, { name: '서울고', team: 'LG' }, { name: '휘문고', team: 'LG' },
+    { name: '장충고', team: 'KW' }, { name: '배재고', team: 'KW' }, { name: '동산고', team: 'SSG' }, { name: '인천고', team: 'SSG' },
+    { name: '유신고', team: 'KT' }, { name: '장안고', team: 'KT' }, { name: '대전고', team: 'HH' }, { name: '북일고', team: 'HH' },
+    { name: '경북고', team: 'SS' }, { name: '대구고', team: 'SS' }, { name: '경남고', team: 'LT' }, { name: '부산고', team: 'LT' },
+    { name: '광주제일고', team: 'KIA' }, { name: '동성고', team: 'KIA' }, { name: '마산용마고', team: 'NC' }, { name: '마산고', team: 'NC' },
+  ],
   // 실제 선수 (2025 시즌 로스터 기준, 개인 테스트용). '이름 포지션 출생연도 [S=간판]'
   // 리그 첫 시즌의 포지션 슬롯에 순서대로 배치된다. 능력치는 생성값(간판 S만 스타 보정). 외국인 선수는 가상.
   // 이적·은퇴로 현재와 다를 수 있으니 자유롭게 고쳐 쓰면 된다.

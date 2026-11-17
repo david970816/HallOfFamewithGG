@@ -21,7 +21,7 @@ const Sim = (function () {
     meFormSD: 5,   // 내 선수 시즌 컨디션 (능력치 ±, 표준편차)
     // 5차: 전성기 창. 등급별로 몇 살부터 몇 년간 능력치 +boost (99 초과 허용 → 시즌 WAR 10~15)
     peak: { '역대급': { len: [2, 4], boost: [21, 26] },   // 41차: 18~23 → 21~26 (역대급 최고 시즌 WAR 중앙값 10.0 → 약 11)
-      '특급': { len: [1, 3], boost: [3, 6] }, from: [25, 29], pitMult: 1.4 },
+      '특급': { len: [1, 3], boost: [3, 6] }, from: [25, 29], pitMult: 1.65 },   // 52차: 투수 전성기 배율 1.4 → 1.65 (최상위권 투수 상한)
     overCap: 120,
     pitRpwK: 0.927,   // 리그 평균 투수의 동적 승리당 득점(≈9.27) ÷ 예전 고정값 10
     pitScale: 1.25,   // 투수 WAR 눈금 보정 (warScale이 타자 기준이라 투수가 과소평가됐음. ERA 2.00·180이닝 ≈ 7)  // 성적 변환에 쓰는 능력치 상한 (내 선수 전성기만 99를 넘는다)
@@ -85,6 +85,15 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // 11차: 마무리 지정 선수의 마무리 자리 우선 보정, 보직 전환 제안 확률
     // 43차: 보직 제안 확대 — toSP 0.35→0.5, toCL 0.4→0.5. spN 선발↔불펜 제안 횟수(1~2→2~3), gap 간격(3→2년), spSta 체력(50→45), spGap 5선발 대비 여유(1→3)
     //       마무리 제안은 따로: clGap 2년, clEra 리그 ERA보다 이만큼 좋으면(0.8→0.5), clVal 팀 최고 불펜 지수와 이만큼 차이 안이면
+    // 52차: 커리어 점수. ach = 업적 기본 점수(우승·메달은 대회 순서대로), lgW = 리그 가중치(WAR·개인 수상), achK = 업적 전체 배율
+    eliteScout: 1.5, regionPick: [0.5, 0.3],   // 52차: 지역 명문고 스카우트 보너스, 연고 구단 우선 지명 확률 [1라운드감, 2~3라운드감]
+    score: {
+      lgW: { KBO: 1, NPB: 1.25, MLB: 1.5 },
+      ach: { WS: 150, WC: 120, OLY_G: 100, OLY_S: 75, OLY_B: 55, JS: 50, AG: 45, KS: 40,
+        MVP: 100, POY: 35, SMVP: 30, GG: 30, TITLE: 20, ROY: 20, MS1: 30, MS2: 80, TW: 60 },
+      // 역대급 타자·투수 각 100판에서 최상위권 WAR:업적 ≈ 60:40 이 되도록 맞춘 배율 (POY는 투수가 상위권을 독식하지 않게 35)
+      achK: 0.48,
+    },
     relief: { clHLD: 0.04, suSV: 0.03, mrSV: 0.005, mrHLD: 0.1, lrHLD: 0.05 },   // 43차: 보직별 세이브·홀드 섞임 (팀 승수 × 구간 비율 × 계수)
     closerBias: 8, roleOffer: { toSP: 0.5, toRP: 0.45, toCL: 0.5, spN: [2, 3], gap: 2, spSta: 45, spGap: 3, clGap: 2, clEra: 0.5, clVal: 2 },
     // 13차: 포스팅(svc 이상·병역 해결이면 언제든 신청), 해외 FA(faSvc 이상), 고교 미국 직행(usDirect)
@@ -373,6 +382,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   function ensureLeagues(st) {
     if (!st.lg.cid) st.lg.cid = 'KBO';
     if (st.me && st.me.milDone == null) st.me.milDone = true;   // 병역 기능 이전 저장 게임은 해결된 것으로
+    if (st.car && st.car.achPts == null) st.car.achPts = legacyAch(st);   // 52차 이전 저장: 지금까지의 업적 점수
     st.L = st.L || {};
     for (const cid of ['FUT', 'UNIV', 'NPB', 'MLB']) if (!st.L[cid] && st.lg.cid !== cid) st.L[cid] = makeOtherLeague(st, cid);
     for (const L of [st.lg, st.home].concat(Object.values(st.L))) if (L) padRosters(st, L, cfgOf(L));
@@ -562,6 +572,14 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     return lv === 1e9 ? 0 : lv;
   }
   function teamById(st, id) { return st.lg.teams.find(t => t.id === id); }
+  // 52차: 계약 제안에 붙이는 '작년 N위' (지금 리그의 직전 시즌 순위)
+  function lastRankTxt(st, id) {
+    for (const L of [st.lg, st.home].concat(Object.values(st.L || {}))) {
+      const ls = L && L.lastStand; const i = ls ? ls.indexOf(id) : -1;
+      if (i >= 0) return ` (작년 ${i + 1}위)`;
+    }
+    return '';
+  }
 
   // ================================================================
   // 내 선수
@@ -610,7 +628,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     ensureLeagues(st);
     const me = {
       name: setup.name || '홍길동', num: setup.num || 1, bats: setup.bats || 'R', throws: setup.throws || 'R', role: setup.role, pos: setup.pos,
-      age: 16, r: Object.assign({}, setup.r), school: setup.school || 'mid', hometown: setup.hometown || R.pick(DATA.teams).id,
+      age: 16, r: Object.assign({}, setup.r), school: setup.school || 'mid', hometown: setup.hometown || R.pick(DATA.teams).id, hsName: setup.school === 'strong' && setup.hsName ? setup.hsName : null,
       avatar: setup.avatar || (seed % 9973),
       trainFocus: (setup.trainFocus || []).slice(0, 2), tfChanges: BAL.focusChange.times, tf2: null,
       stage: 'hs', grade: 1, team: null, lvl: 2, care: 0, trust: 50, pop: 0, dur: R.int(50, 85), bigInj: 0,
@@ -634,7 +652,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     me.aging = R.weighted(Object.keys(BAL.agingProb), x => BAL.agingProb[x]);
     me.shown = Object.assign({}, me.r);
     st.me = me;
-    st.car = { bat: emptyBat(), pit: emptyPit(), ps: { bat: emptyBat(), pit: emptyPit() }, war: 0, warB: 0, warP: 0, aw: { MVP: 0, GG: 0, KSMVP: 0, TITLE: 0, ROY: 0, KS: 0 }, awList: [], ms: [], twoWaySeasons: 0, peak: myOVR(me) };
+    st.car = { bat: emptyBat(), pit: emptyPit(), ps: { bat: emptyBat(), pit: emptyPit() }, war: 0, warB: 0, warP: 0, aw: { MVP: 0, GG: 0, KSMVP: 0, TITLE: 0, ROY: 0, KS: 0, POY: 0 }, awList: [], ms: [], twoWaySeasons: 0, peak: myOVR(me), achPts: 0 };
     story(st, `${me.age}세, ${schoolName(me.school)} 야구부 1학년. 벤치 끝자리에서 인생이 시작됐다.`);
     return st;
   }
@@ -785,7 +803,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   function hsBatLine(s) { return s; }
   function hsHistRow(st, res) {
     const me = st.me;
-    st.hist.push({ year: st.year, age: me.age, team: me.stage === 'hs' ? '고교' + me.grade : me.stage === 'univ' ? univName(st) : '독립', teamId: me.stage === 'univ' ? me.univTeam : null, lg: me.stage === 'hs' ? 'HS' : me.stage === 'univ' ? 'UNIV' : 'IND', lvl: 'A', bat: res.bat || null, pit: res.pit || null, war: null, note: res.awards.join(', ') });
+    st.hist.push({ year: st.year, age: me.age, team: me.stage === 'hs' ? (me.hsName ? me.hsName + ' ' + me.grade : '고교' + me.grade) : me.stage === 'univ' ? univName(st) : '독립', teamId: me.stage === 'univ' ? me.univTeam : null, lg: me.stage === 'hs' ? 'HS' : me.stage === 'univ' ? 'UNIV' : 'IND', lvl: 'A', bat: res.bat || null, pit: res.pit || null, war: null, note: res.awards.join(', ') });
   }
   // 14차: 아마추어 평가에 수비 기여를 OPS 환산으로 더한다 (유격·포수는 크게)
   function amDef(me, e) { return me.role === 'B' ? (defRuns(e, me.pos) / 600) * 3 : 0; }
@@ -802,7 +820,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     else tool = Math.max(me.r.pow, me.r.spd, me.r.arm, me.r.def + ((DEFMUL[me.pos] || 0) >= 1.1 ? 4 : 0));   // 14차: 수비도 툴로 본다
     const paAvg = avgKeys(me.pa, mainKeys(me)) + sc.err;
     let s = w.ovr * myOVR(me) + w.perf * perf + w.tourn * tourn + w.tool * tool + w.pa * paAvg;
-    if (me.stage === 'hs') s += BAL.schoolExpo[me.school] + (sc.youth ? 5 : 0);
+    if (me.stage === 'hs') s += BAL.schoolExpo[me.school] + (sc.youth ? 5 : 0) + (me.hsName ? BAL.eliteScout : 0);   // 52차: 지역 명문고 스카우트 보너스
     if (me.stage === 'univ') s += BAL.univScout;
     s += sc.bonus || 0;
     return Math.max(s, ovrFloor(me));
@@ -1370,6 +1388,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const titles = {
       '타격왕': best(qB, e => AVG(e.bat)), '홈런왕': best(bats, e => e.bat.HR), '타점왕': best(bats, e => e.bat.RBI),
       '다승왕': best(pits, e => e.pit.W), '평균자책점왕': best(qP, e => -ERA(e.pit)), '세이브왕': best(pits, e => e.pit.SV || 0),
+      // 52차: 탈삼진왕·도루왕
+      '탈삼진왕': best(pits, e => e.pit.K || 0), '도루왕': best(bats, e => e.bat.SB || 0),
     };
     const titleCount = {};
     for (const k in titles) if (titles[k]) titleCount[titles[k].id] = (titleCount[titles[k].id] || 0) + 1;
@@ -1387,7 +1407,9 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       return s;
     });
     const roy = best(entries.filter(e => e.rookie), e => e.war);
-    return { titles, gg, mvp, roy };
+    // 52차: 올해의 투수상 — 리그(KBO·일본·미국)마다 그해 최고 투수 1명 (WAR + 투수 타이틀)
+    const poy = best(qP.length ? qP.concat(pits.filter(e => (e.pit.SV || 0) >= 30)) : pits, e => e.war + ['다승왕', '평균자책점왕', '탈삼진왕', '세이브왕'].filter(k => titles[k] === e).length * 0.6);
+    return { titles, gg, mvp, roy, poy };
   }
   // 10차: 기록실·구단 기록용 선수별 시즌 기록 (리그마다 1벌만 저장, 순위는 화면에서 계산)
   function statRows(st, entries, L) {
@@ -1464,13 +1486,16 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     if (me.twoWay && m.warB >= BAL.twoWay.okWAR && m.warP >= BAL.twoWay.okWAR) { car.twoWaySeasons++; me.everTwoWaySuccess = true; res.awards.push(`이도류 시즌 (타자·투수 WAR ${BAL.twoWay.okWAR}+)`); }
     // 수상
     const isMe = x => x && x.id === 'me';
-    for (const k in aw.titles) if (isMe(aw.titles[k])) { res.awards.push(k); car.aw.TITLE++; car.awList.push(`${st.year} ${k}`); }
-    for (const pos in aw.gg) if (aw.gg[pos].some(isMe)) { res.awards.push('골든글러브'); car.aw.GG++; car.awList.push(`${st.year} 골든글러브`); }
-    if (isMe(aw.mvp)) { res.awards.push('정규시즌 MVP'); car.aw.MVP++; car.awList.push(`${st.year} MVP`); story(st, `${st.year}년, 리그 MVP. 이 해만큼은 리그가 내 것이었다.`); }
+    const lgId = cfgOf(st.lg).id;
+    for (const k in aw.titles) if (isMe(aw.titles[k])) { res.awards.push(k); car.aw.TITLE++; car.awList.push(`${st.year} ${k}`); addAch(st, 'TITLE', lgId); }
+    for (const pos in aw.gg) if (aw.gg[pos].some(isMe)) { res.awards.push('골든글러브'); car.aw.GG++; car.awList.push(`${st.year} 골든글러브`); addAch(st, 'GG', lgId); }
+    if (isMe(aw.mvp)) { res.awards.push('정규시즌 MVP'); car.aw.MVP++; car.awList.push(`${st.year} MVP`); addAch(st, 'MVP', lgId); story(st, `${st.year}년, 리그 MVP. 이 해만큼은 리그가 내 것이었다.`); }
+    if (isMe(aw.poy)) { res.awards.push('올해의 투수상'); car.aw.POY = (car.aw.POY || 0) + 1; car.awList.push(`${st.year} 올해의 투수상`); addAch(st, 'POY', lgId); story(st, `${st.year}년, 올해의 투수상. 리그에서 가장 위력적인 투수로 인정받았다.`); }
+    if (me.twoWay && m.warB >= BAL.twoWay.okWAR && m.warP >= BAL.twoWay.okWAR) addAch(st, 'TW', lgId);
     // 화제성: 성적으로 쌓이고 해마다 조금씩 식는다 (MVP 투표·이벤트 조건에 쓰임)
     const myTitles = Object.values(aw.titles).filter(isMe).length;
     me.pop = Math.round(me.pop * BAL.popDecay + clamp(myWAR / BAL.warScale, -2, 8) * BAL.popPerWAR + myTitles * BAL.popPerTitle);
-    if (isMe(aw.roy)) { res.awards.push('신인왕'); car.aw.ROY++; car.awList.push(`${st.year} 신인왕`); story(st, `${st.year}년 신인왕.`); }
+    if (isMe(aw.roy)) { res.awards.push('신인왕'); car.aw.ROY++; car.awList.push(`${st.year} 신인왕`); addAch(st, 'ROY', lgId); story(st, `${st.year}년 신인왕.`); }
     // 포스트시즌
     res.post = post;
     if (post.me) {
@@ -1478,14 +1503,14 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       if (post.me.bat) addLine(car.ps.bat, post.me.bat);
       if (post.me.pit) addLine(car.ps.pit, post.me.pit);
       const cn = post.champName || '한국시리즈';
-      if (post.champion === me.team) { car.aw.KS++; res.awards.push(`${cn} 우승`); car.awList.push(`${st.year} ${cn} 우승`); story(st, `${st.year}년, ${team.name}의 ${cn} 우승 멤버가 됐다.`); car.titles = (car.titles || []).concat([{ year: st.year, team: team.name, lg: cfgOf(st.lg).short, name: cn }]); }
-      if (post.me.ksMVP) { car.aw.KSMVP++; res.awards.push(`${cn} MVP`); car.awList.push(`${st.year} ${cn} MVP`); story(st, `${st.year}년 ${cn} MVP. 마지막 아웃카운트를 잊지 못한다.`); }
+      if (post.champion === me.team) { car.aw.KS++; addAch(st, lgId === 'MLB' ? 'WS' : lgId === 'NPB' ? 'JS' : 'KS', null); res.awards.push(`${cn} 우승`); car.awList.push(`${st.year} ${cn} 우승`); story(st, `${st.year}년, ${team.name}의 ${cn} 우승 멤버가 됐다.`); car.titles = (car.titles || []).concat([{ year: st.year, team: team.name, lg: cfgOf(st.lg).short, name: cn }]); }
+      if (post.me.ksMVP) { car.aw.KSMVP++; addAch(st, 'SMVP', lgId); res.awards.push(`${cn} MVP`); car.awList.push(`${st.year} ${cn} MVP`); story(st, `${st.year}년 ${cn} MVP. 마지막 아웃카운트를 잊지 못한다.`); }
     }
     // 마일스톤
     const tot = { H: car.bat.H, HR: car.bat.HR, W: car.pit.W, SV: car.pit.SV, PK: car.pit.K };
     for (const msd of MILESTONES) {
       const [k, n, name] = msd;
-      if (tot[k] >= n && car.ms.indexOf(name) < 0) { car.ms.push(name); res.ms.push(name); if (msd[3] > 0) story(st, `${me.age}세, 통산 ${name} 달성.`); }
+      if (tot[k] >= n && car.ms.indexOf(name) < 0) { car.ms.push(name); res.ms.push(name); if (msd[3] > 0) addAch(st, msd[3] >= 40 ? 'MS2' : 'MS1', lgId); if (msd[3] > 0) story(st, `${me.age}세, 통산 ${name} 달성.`); }
     }
     // 리그 순위 한 줄
     res.leaderLine = leaderLine(leaders, me);
@@ -1493,7 +1518,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     res.news = fanNews(st, res);
     peakScene(st, res, myWAR, segs1);
     // 히스토리
-    st.hist.push({ year: st.year, age: me.age, team: team.name, teamId: team.id, lg: cfgOf(st.lg).id, lvl: segs1 >= 1 ? '1군' : '2군', def: m.def || null, futBat: b2.PA ? b2 : null, futPit: p2.outs ? p2 : null, psBat: post.me && post.me.bat || null, psPit: post.me && post.me.pit || null, bat: b1.PA ? b1 : (b2.PA ? Object.assign({ fut: true }, b2) : null), pit: p1.outs ? p1 : (p2.outs ? Object.assign({ fut: true }, p2) : null), war: myWAR, note: res.awards.join(', ') });
+    st.hist.push({ year: st.year, age: me.age, team: team.name, teamId: team.id, lg: cfgOf(st.lg).id, pos: me.twoWay ? 'TW' : me.pos, lvl: segs1 >= 1 ? '1군' : '2군', def: m.def || null, futBat: b2.PA ? b2 : null, futPit: p2.outs ? p2 : null, psBat: post.me && post.me.bat || null, psPit: post.me && post.me.pit || null, bat: b1.PA ? b1 : (b2.PA ? Object.assign({ fut: true }, b2) : null), pit: p1.outs ? p1 : (p2.outs ? Object.assign({ fut: true }, p2) : null), war: myWAR, note: res.awards.join(', ') });
     me.lastSeason = { war: myWAR, warB: m.warB, warP: m.warP, avg: b1.PA >= 100 ? AVG(b1) : null, ops: b1.PA >= 100 ? OPS(b1) : null, era: p1.outs >= 90 ? ERA(p1) : null, starter: segsS >= 2 || (me.role === 'P' && m.pacc.su >= 2), firstSegs: segs1, injured: !!m.injText, bigInjury: m.segs.filter(s => s === 'I').length >= 2, cl: m.pacc.cl, su: m.pacc.su, gs: p1.GS || 0 };
     // 25차: 시즌 대부분을 마무리로 뛰었다면 이미 마무리 투수로 본다 (결산에서 "마무리 맡아라" 제안이 뒤늦게 나오던 문제)
     if (me.role === 'P' && !me.twoWay && me.pos === 'RP' && m.pacc.cl >= 2 && !me.flags.closer) me.flags.closer = true;
@@ -1849,15 +1874,16 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     if (!sangmu) {
       res.statusText = `현역 복무 ${yr}년차 · 야구공 대신 총을 잡았다`;
       res.playCoef = 0;
-      // 17차: 현역 복무 중 체력 훈련 — 투수는 체력·멘탈 +2, 타자는 어깨·주루 +2, 나머지 주 능력치 −1 (매년)
+      // 17차: 현역 복무 중 체력 훈련 — 투수는 체력·멘탈, 타자는 어깨·주루가 오르고 나머지 주 능력치는 떨어진다 (매년)
+      // 52차: 올라가는 능력치 +2 → +3, 나머지 −1 → −2
       const up = me.role === 'P' ? ['sta', 'men'] : ['arm', 'spd'];
-      for (const k of mainKeys(me)) addR(me, k, up.indexOf(k) >= 0 ? 2 : -1);
+      for (const k of mainKeys(me)) addR(me, k, up.indexOf(k) >= 0 ? 3 : -2);
     } else {
       const e = effR(me);
       res.statusText = `상무 ${yr}년차 · 퓨처스리그 출전`;
       if (me.role === 'B' || me.twoWay) { const p = batRates(e, 7); res.bat = finishBat(simBat(p, Math.round(380 * (me.role === 'B' ? 1 : 0.6))), p, 1, 1, 1); res.bat.G = Math.round(res.bat.PA / 4.1); }
       if (me.role === 'P' || me.twoWay) { const p = pitRates(e, 7); const outs = me.pos === 'SP' ? Math.round(20 * p.ipS * 3 * (me.role === 'P' ? 1 : 0.4)) : 55 * 3; res.pit = simPitch(p, outs, 1); res.pit.G = me.pos === 'SP' ? 20 : 45; res.pit.GS = me.pos === 'SP' ? 20 : 0; }
-      res.playCoef = 0.85;
+      res.playCoef = 0.9;   // 52차: 0.85 → 0.9 (1군 주전 성장의 90%)
     }
     st.hist.push({ year: st.year, age: me.age, team: res.team.name, teamId: sangmu ? 'F_SM' : null, lg: 'MIL', lvl: 'A', bat: res.bat || null, pit: res.pit || null, war: null, note: '' });
   }
@@ -2087,14 +2113,46 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   }
 
   // ---------- 커리어 점수 (5.11) ----------
+  // 52차: 커리어 점수 = WAR 점수 + 업적 점수 (최상위권에서 대략 6:4가 되도록 BAL.score.achK로 맞춤)
+  //   WAR 점수: 시즌 WAR × 리그 가중치(KBO 1 · 일본 · 미국) × 투수 가중치
+  //   업적 점수: 수상·타이틀·통산 기록은 받은 리그의 가중치를 곱하고, 우승·메달은 대회별 고정 점수(이미 리그 차등)
+  function lgW(id) { return (BAL.score.lgW[id] || 1); }
+  function addAch(st, key, lgId) {
+    const car = st.car;
+    if (car.achPts == null) car.achPts = 0;   // 예전 저장은 ensureLeagues에서 먼저 legacyAch로 채워진다
+    car.achPts += (BAL.score.ach[key] || 0) * (lgId ? lgW(lgId) : 1);
+  }
+  // 52차 이전에 시작한 커리어: 그때까지의 수상 횟수로 업적 점수를 한 번 계산해 둔다 (리그 구분 없이 KBO 기준)
+  function legacyAch(st) {
+    const car = st.car, a = car.aw, A = BAL.score.ach;
+    let s = (a.MVP || 0) * A.MVP + (a.GG || 0) * A.GG + (a.KSMVP || 0) * A.SMVP + (a.TITLE || 0) * A.TITLE + (a.ROY || 0) * A.ROY + (a.KS || 0) * A.KS + (a.POY || 0) * A.POY;
+    for (const name of car.ms) { const m = MILESTONES.find(x => x[2] === name); if (m && m[3]) s += m[3] >= 40 ? A.MS2 : A.MS1; }
+    s += (car.twoWaySeasons || 0) * A.TW;
+    for (const t of car.intlRec || []) s += intlAchPts(t.name, t.result);
+    return s;
+  }
+  function intlAchPts(name, result) {
+    const A = BAL.score.ach;
+    if (/올림픽/.test(name)) return result === '금메달' ? A.OLY_G : result === '은메달' ? A.OLY_S : result === '동메달' ? A.OLY_B : 0;
+    if (/아시안게임/.test(name)) return result === '금메달' ? A.AG : 0;
+    if (/WBC|프리미어/.test(name)) return result === '우승' ? A.WC : 0;
+    return 0;
+  }
+  function warPoints(st) {
+    const car = st.car, w = warW(st.me);
+    // 시즌별 WAR를 리그 가중치로 합산 (예전 저장처럼 기록이 비어 있으면 통산 WAR 그대로)
+    let sum = 0, seen = 0;
+    for (const h of st.hist) if (h.war != null && (h.lg === 'KBO' || h.lg === 'NPB' || h.lg === 'MLB' || h.lg == null)) { sum += h.war * lgW(h.lg || 'KBO'); seen += h.war; }
+    sum += car.war - seen;   // 기록 줄에 안 잡힌 나머지(있다면)는 가중치 1
+    return sum * w / BAL.warScale * 10;
+  }
   function careerScore(st) {
     const car = st.car;
-    let s = car.war * warW(st.me) / BAL.warScale * 10;   // 35차: 투수 WAR 가중치
-    s += car.aw.MVP * 50 + car.aw.GG * 15 + car.aw.KSMVP * 15 + (car.aw.TITLE + car.aw.ROY + car.aw.KS) * 10;
-    for (const name of car.ms) { const m = MILESTONES.find(x => x[2] === name); if (m) s += m[3]; }
-    s += car.twoWaySeasons * 30;
+    const ach = car.achPts == null ? legacyAch(st) : car.achPts;
+    const s = warPoints(st) + ach * BAL.score.achK;
     return Math.max(0, Math.round(s));   // 41차: 통산 WAR가 마이너스여도 점수는 0점 아래로 내려가지 않는다
   }
+  function scoreParts(st) { const ach = st.car.achPts == null ? legacyAch(st) : st.car.achPts; return { war: Math.round(warPoints(st)), ach: Math.round(ach * BAL.score.achK) }; }
   // 23차: 명예의 전당 — 아래 중 하나라도 달성하면 헌액 (BAL.hof)
   function hofCheck(st) {
     const me = st.me, car = st.car, H = BAL.hof, why = [];
@@ -2111,11 +2169,54 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     if (car.twoWaySeasons >= H.twoWay) why.push(`이도류 시즌 ${car.twoWaySeasons}회`);
     return { in: why.length > 0, why, year: st.year - 1 };
   }
+  // 52차: 프로에서 가장 많이 뛴 팀·포지션 (1군 출전량 기준 — 타석 + 아웃카운트×1.5, 1군 기록이 없으면 2군 포함)
+  function mainTeamPos(st) {
+    const me = st.me, rows = st.hist.filter(h => h.teamId && (h.lg === 'KBO' || h.lg === 'NPB' || h.lg === 'MLB'));
+    const vol = h => (h.bat && !h.bat.fut ? h.bat.PA || 0 : 0) + (h.pit && !h.pit.fut ? (h.pit.outs || 0) * 1.5 : 0);
+    let use = rows.filter(h => vol(h) > 0);
+    const w = use.length ? vol : () => 1;
+    if (!use.length) use = rows;
+    const tally = (keyOf) => { const m = {}; for (const h of use) { const k = keyOf(h); if (k) m[k] = (m[k] || 0) + w(h); } return Object.keys(m).sort((a, b) => m[b] - m[a])[0] || null; };
+    const tid = tally(h => h.teamId), pos = tally(h => h.pos) || (me.twoWay ? 'TW' : me.pos);
+    const row = use.find(h => h.teamId === tid);
+    return { teamId: tid || me.team || null, teamName: row ? row.team : (me.team ? teamName(st, me.team) : ''), pos };
+  }
+  // 52차: 커리어 한줄평 — 기록에 맞는 문장 하나 (위에서부터 먼저 맞는 것)
+  function careerLine(st, f) {
+    const me = st.me, car = st.car, a = car.aw, P = POSNAME[f.mainPos] || (f.mainPos === 'TW' ? '이도류' : '선수');
+    const mlb = st.hist.filter(h => h.lg === 'MLB' && h.war != null).length, npb = st.hist.filter(h => h.lg === 'NPB' && h.war != null).length;
+    const peakAge = car.peakYears && car.peakYears.length ? car.peakYears[0].age : null;
+    const undrafted = !me.draft || me.draft.round === '육성';
+    const teams = new Set(st.hist.filter(h => h.teamId && h.lg === 'KBO').map(h => h.teamId)).size;
+    const L = [];
+    if (car.twoWaySeasons >= 3) L.push(`투타를 모두 지배한, 다시 나오기 힘든 이도류 ${f.hof.in ? '전설' : '스타'}`);
+    if (f.hof.in && (a.MVP || 0) >= 3) L.push(`MVP ${a.MVP}회, 한 시대를 지배한 명예의 전당 ${P}`);
+    if (mlb >= 5 && f.war >= WS(40)) L.push(`메이저리그를 호령한 한국 야구의 자존심, ${P} ${me.name}`);
+    if (f.hof.in && undrafted) L.push(`지명받지 못한 소년에서 명예의 전당까지 — 야구 역사에 남을 역전극`);
+    if (f.hof.in && teams <= 1) L.push(`한 팀의 유니폼만 입고 명예의 전당에 오른 영원한 프랜차이즈 ${P}`);
+    if (f.hof.in) L.push(`기록과 기억 모두에 이름을 새긴 명예의 전당 ${P}`);
+    if ((a.KS || 0) >= 4) L.push(`우승 반지 ${a.KS}개, 큰 경기에 강했던 우승 청부사`);
+    if (mlb >= 2) L.push(`메이저리그의 벽에 도전했던 ${P}`);
+    if (npb >= 3) L.push(`일본 무대에서도 실력을 증명한 ${P}`);
+    if (peakAge != null && peakAge >= 31 && f.war >= WS(20)) L.push(`서른 넘어 꽃피운 대기만성형 ${P}`);
+    if (undrafted && f.war >= WS(15)) L.push(`미지명의 설움을 실력으로 갚은 노력파 ${P}`);
+    if ((a.MVP || 0) >= 1) L.push(`MVP의 영광을 안은 시대의 ${P}`);
+    if ((a.POY || 0) >= 1) L.push(`리그 최고의 투수로 우뚝 섰던 에이스`);
+    if (f.war >= WS(40)) L.push(`꾸준함으로 리그를 지탱한 정상급 ${P}`);
+    if (f.war >= WS(20)) L.push(`팀의 중심을 오래 지킨 믿음직한 ${P}`);
+    if ((car.ms || []).some(n => { const m = MILESTONES.find(x => x[2] === n); return m && m[3] > 0; })) L.push(`꾸준히 기록을 쌓아 올린 성실한 ${P}`);
+    if (me.everStarter) L.push(`한때 주전으로 그라운드를 누볐던 ${P}`);
+    if (me.debut != null) L.push(`1군 무대를 밟아 본 것만으로도 빛났던 야구 인생`);
+    L.push('프로의 꿈을 끝까지 쫓았던 야구 소년');
+    return L[0];
+  }
   function finalCard(st) {
     const me = st.me, car = st.car;
     const keys = mainKeys(me);
     const paRate = Math.round(100 * avgKeys(st.car.peakR || me.r, keys) / avgKeys(me.pa, keys));
-    return {
+    const mtp = mainTeamPos(st);
+    const f = {
+      mainTeam: mtp.teamId, mainTeamName: mtp.teamName, mainPos: mtp.pos,
       hof: hofCheck(st),
       name: me.name, pos: me.pos, twoWay: me.twoWay, retireAge: me.age, score: careerScore(st), war: car.war, warB: car.warB, warP: car.warP,
       bat: car.bat, pit: car.pit, aw: car.aw, awList: car.awList, ms: car.ms, earnings: me.earnings + (me.bonus || 0),
@@ -2126,6 +2227,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         ? { from: car.peakYears[0].age, to: car.peakYears[car.peakYears.length - 1].age, war: car.peakYears.reduce((a, y) => a + y.war, 0) }
         : { missed: true, from: me.peak.from }),
     };
+    f.oneLine = careerLine(st, f);
+    return f;
   }
 
   // ================================================================
@@ -2263,13 +2366,18 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         if (s >= db[0]) pick = R.int(1, 3); else if (s >= db[1]) pick = R.int(4, 10); else if (s >= db[2]) pick = R.int(11, 30);
         else if (s >= db[3]) pick = R.int(31, 70); else pick = R.int(71, 110);
         const order = st.lg.lastStand.slice().reverse();
+        // 52차: 연고 구단 우선 관심 — 상위 라운드감(2~3라운드 이상)이면 연고 구단이 같은 라운드의 자기 순번에서 먼저 지명할 수 있다
+        const hi = order.indexOf(me.hometown);
+        if (me.stage === 'hs' && hi >= 0 && s >= db[2] && R.chance(s >= db[1] ? BAL.regionPick[0] : BAL.regionPick[1])) {
+          const rd = Math.ceil(pick / 10); pick = (rd - 1) * 10 + hi + 1; ctx.regional = true;
+        }
         ctx.pick = pick; ctx.round = Math.ceil(pick / 10); ctx.inRound = (pick - 1) % 10 + 1; ctx.team = order[(pick - 1) % 10];
         const bonusT = [[db[0], 30000, 50000], [db[1], 15000, 30000], [db[2], 7000, 15000], [db[3], 4000, 7000], [0, 2500, 3500]];
         const b = bonusT.find(x => s >= x[0]);
         ctx.bonus = Math.round(R.range(b[1], b[2]) / 100) * 100;
       },
       text: (st, me, c) => c.pick
-        ? `${st.year} 신인 드래프트. ${c.round}라운드 ${c.inRound}순위(전체 ${c.pick}순위) — ${tj(st, c.team, '이', '가')} ${me.name}의 이름을 불렀다. 계약금 ${man(c.bonus)} 제안.`
+        ? `${st.year} 신인 드래프트. ${c.round}라운드 ${c.inRound}순위(전체 ${c.pick}순위) — ${c.regional ? `연고 구단 ` : ''}${tj(st, c.team, '이', '가')} ${me.name}의 이름을 불렀다.${c.regional ? ' 고향 팬들이 환호했다.' : ''} 계약금 ${man(c.bonus)} 제안.`
         : `${st.year} 신인 드래프트. 110명의 이름이 불렸지만, 끝내 ${me.name}의 이름은 없었다.`,
       ch: (st, me, c) => c.pick ? (c.round <= 2 ? ['바로 서명한다', '계약금을 더 요구하며 버틴다'] : ['서명한다'])
         // 14차: 미지명 → 대학 / 육성선수 입단 테스트(합격·불합격) / 독립리그
@@ -2317,6 +2425,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         const gB = r.games.filter(g => /타수/.test(g.me)).length, gP = r.games.filter(g => /이닝/.test(g.me)).length;
         st.car.intlRec = (st.car.intlRec || []).concat([{ year: c.year, age: me.age - 1, name: T.name, result: r.result, rank: r.rank, field: r.field, medal: r.medal, awards: r.awards.slice(), bat: r.bat ? Object.assign({}, r.bat, { G: gB }) : null, pit: r.pit ? Object.assign({}, r.pit, { G: gP }) : null }]);
         if (r.medal) st.car.awList.push(`${c.year} ${T.name} ${r.result}`);
+        { const p = intlAchPts(T.name, r.result); if (p) { if (st.car.achPts == null) st.car.achPts = 0; st.car.achPts += p; } }   // 52차: 국제대회 우승·메달도 커리어 점수에
         for (const a of r.awards) { st.car.awList.push(`${c.year} ${T.name} ${a}`); story(st, `${c.year} ${T.name} ${a}.`); }
         if (r.exempt && !me.milDone) {
           me.milDone = true; me.milExempt = `${c.year} ${T.name} ${r.result}`; r.milGranted = true; story(st, `${T.name} ${r.result}로 병역 혜택을 받았다.`);
@@ -2430,7 +2539,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       text: (st, me, c) => c.offers.length
         ? `포스팅 마감. ${['MLB', 'NPB'].filter(id => c.offers.some(o => o.cid === id)).map(id => `${LCFG[id].short} ${c.offers.filter(o => o.cid === id).length}곳`).join(', ')}이 응찰했다.`
         : '포스팅 마감. …응찰한 구단이 한 곳도 없었다. 아직은 해외에서 보기에 부족하다는 뜻이다.',
-      ch: (st, me, c) => c.offers.map(o => `${LCFG[o.cid].short}: ${teamName(st, o.team)} ${o.yrs}년 연 ${man(o.sal)}`).concat([c.offers.length ? '포스팅 철회 (잔류)' : '구단에 남는다']),
+      ch: (st, me, c) => c.offers.map(o => `${LCFG[o.cid].short}: ${teamName(st, o.team)}${lastRankTxt(st, o.team)} ${o.yrs}년 연 ${man(o.sal)}`).concat([c.offers.length ? '포스팅 철회 (잔류)' : '구단에 남는다']),
       safe: (st, me, c) => c.offers.length,
       res: (st, me, i, c) => {
         const o = c.offers[i];
@@ -2503,31 +2612,35 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       id: 'fa', forced: true, cat: '커리어', who: '에이전트',
       prep: (st, me, c) => {
         const ww = weightedWAR(me), v = marketValue(me) * (me.flags.bigAgent ? 1.15 : 1) * (cfgOf(st.lg).salMul || 1);
-        const n = ww < WS(1) ? R.int(0, 1) : ww < WS(3) ? R.int(1, 3) : R.int(3, 5);
+        // 52차: 제안 구단 수 확대 (0~1 → 1~2, 1~3 → 2~4, 3~5 → 4~6)
+        const n = ww < WS(1) ? R.int(1, 2) : ww < WS(3) ? R.int(2, 4) : R.int(4, 6);
         const yrs = me.age <= 30 ? R.int(4, 6) : me.age <= 32 ? R.int(3, 4) : me.age <= 34 ? R.int(1, 3) : R.int(1, 2);
         const others = st.lg.teams.filter(t => t.id !== me.team).map(t => t.id);
         const offers = [];
         for (let i = 0; i < n && others.length; i++) { const id = others.splice(R.int(0, others.length - 1), 1)[0]; offers.push({ team: id, sal: Math.round(v * R.range(1.1, 1.3) / 100) * 100, yrs: Math.max(1, yrs + R.int(-1, 0)) }); }
         offers.sort((a, b) => b.sal - a.sal);
         c.best = offers[0] || null;
+        c.off2 = offers[1] || null; c.off3 = offers[2] || null;   // 52차: 상위 3곳까지 선택지로
         c.stay = { team: me.team, sal: Math.round(Math.max(BAL.minSal, v * R.range(0.95, 1.1)) / 100) * 100, yrs };
-        c.home = !me.abroad && me.hometown !== me.team ? { team: me.hometown, sal: Math.round(Math.max(BAL.minSal, v * 0.85) / 100) * 100, yrs } : null;
+        c.home = null;   // 52차: 고향팀 할인 제안 없앰 (고향 대신 연고 지역 → 드래프트 우선 관심)
         // 13차: 해외 FA (KBO 1군 faSvc 시즌 이상·병역 해결)
         c.ab = !me.abroad && cfgOf(st.lg).id === 'KBO' && me.svc >= BAL.abroad.faSvc && me.milDone && me.age <= BAL.abroad.maxAge + 2 ? overseasOffers(st, 'fa').slice(0, 3) : [];
         c.kbo = me.abroad ? { team: kboReturnTeam(st), sal: Math.round(Math.max(BAL.minSal, marketValue(me) * R.range(1.0, 1.3)) / 100) * 100, yrs: Math.max(1, yrs - 1) } : null;
         c.n = offers.length;
         // 27차: FA 계약금 (연봉 1억 이상 제안에만, 총 연봉의 30~45%)
-        for (const o of [c.best, c.stay, c.home, c.kbo]) if (o && o.sal >= 10000) o.bon = Math.round(o.sal * o.yrs * R.range(BAL.faBonus[0], BAL.faBonus[1]) / 1000) * 1000;
+        for (const o of [c.best, c.off2, c.off3, c.stay, c.home, c.kbo]) if (o && o.sal >= 10000) o.bon = Math.round(o.sal * o.yrs * R.range(BAL.faBonus[0], BAL.faBonus[1]) / 1000) * 1000;
       },
-      text: (st, me, c) => `${me.abroad ? '계약 만료.' : 'FA 자격 취득!'} 제안한 구단 ${c.n}곳. ${c.best ? `최고액은 ${teamName(st, c.best.team)}의 ${faTerms(c.best)}.` : '시장 반응이 차갑다.'}`,
+      text: (st, me, c) => `${me.abroad ? '계약 만료.' : 'FA 자격 취득!'} 제안한 구단 ${c.n}곳. ${c.best ? `최고액은 ${teamName(st, c.best.team)}${lastRankTxt(st, c.best.team)}의 ${faTerms(c.best)}.` : '시장 반응이 차갑다.'}`,
       ch: (st, me, c) => {
-        const a = [];
-        if (c.best) a.push(`최고 금액: ${teamName(st, c.best.team)} ${faTerms(c.best)}`);
-        a.push(`원소속 잔류: ${teamName(st, c.stay.team)} ${faTerms(c.stay)}`);
-        if (c.home) a.push(`고향팀: ${teamName(st, c.home.team)} ${faTerms(c.home)}`);
+        const a = [], tn = id => teamName(st, id) + lastRankTxt(st, id);
+        if (c.best) a.push(`최고 금액: ${tn(c.best.team)} ${faTerms(c.best)}`);
+        if (c.off2) a.push(`다른 제안: ${tn(c.off2.team)} ${faTerms(c.off2)}`);
+        if (c.off3) a.push(`다른 제안: ${tn(c.off3.team)} ${faTerms(c.off3)}`);
+        a.push(`원소속 잔류: ${tn(c.stay.team)} ${faTerms(c.stay)}`);
+        if (c.home) a.push(`고향팀: ${tn(c.home.team)} ${faTerms(c.home)}`);
         if (c.kbo) a.push(`KBO 복귀: ${teamName(st, c.kbo.team)} ${faTerms(c.kbo)}`);
-        (c.ab || []).forEach(o => a.push(`해외 FA · ${LCFG[o.cid].short}: ${teamName(st, o.team)} ${o.yrs}년 연 ${man(o.sal)}`));
-        c.opts = [c.best ? 'best' : null, 'stay', c.home ? 'home' : null, c.kbo ? 'kbo' : null].filter(Boolean).concat((c.ab || []).map((o, j) => 'ab' + j));
+        (c.ab || []).forEach(o => a.push(`해외 FA · ${LCFG[o.cid].short}: ${teamName(st, o.team)}${lastRankTxt(st, o.team)} ${o.yrs}년 연 ${man(o.sal)}`));
+        c.opts = [c.best ? 'best' : null, c.off2 ? 'off2' : null, c.off3 ? 'off3' : null, 'stay', c.home ? 'home' : null, c.kbo ? 'kbo' : null].filter(Boolean).concat((c.ab || []).map((o, j) => 'ab' + j));
         return a;
       },
       safe: 0,
@@ -2706,7 +2819,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   return {
     BAL, LABEL, POSNAME, BAT, PIT, ALL, GROUP,
     newGame, makeCandidates, playSeason, pendingItem, choose, voluntaryRetire, careerScore,
-    view, debug, interest, draftRange, man, teamName, velo, ovrAt, valAt, expWAR, mainKeys, oppKeys, LCFG, cfgOf, leagueList, myLeagueId, findTeam,
+    view, debug, interest, draftRange, man, teamName, velo, ovrAt, valAt, expWAR, scoreParts, mainKeys, oppKeys, LCFG, cfgOf, leagueList, myLeagueId, findTeam,
     AVG, OBP, SLG, OPS, ERA, IP, rate3, fmtBatShort, fmtPitShort,
     PROF, OPT, disp, dispD, canPost, requestPosting, changeFocus, _internal: { batRates, pitRates, batExp, pitExp, ERA_SCALE, FORM0 },
   };

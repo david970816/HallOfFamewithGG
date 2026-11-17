@@ -459,3 +459,8 @@ table.lg tr.me td { background: rgba(196,53,43,.1); font-weight: 800; }
 .notice-pop-kicker { font-size: 12px; font-weight: 800; color: var(--red); letter-spacing: .02em; margin-bottom: 2px; }
 .notice-pop h3 { margin: 4px 0 8px; font-size: 18px; }
 .notice-pop-body p { margin: 0 0 8px; font-size: 14px; line-height: 1.6; color: var(--ink2); }
+
+/* 52차: 커리어 한줄평 */
+.one-line { text-align: center; display: grid; gap: 4px; padding: 12px 14px; }
+.one-line b { font-size: 16px; line-height: 1.5; color: var(--ink); font-style: italic; }
+.podium .pod-silver { grid-column: 1; } .podium .pod-gold { grid-column: 2; } .podium .pod-bronze { grid-column: 3; }

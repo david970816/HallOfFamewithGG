@@ -5,7 +5,7 @@
   const $modal = document.getElementById('modal-root');
   const VER = GAME_DATA.version;
   const KEY_SAVE = 'dugout_save_' + VER, KEY_REC = 'dugout_records', KEY_DEV = 'dugout_dev', KEY_BENCH = 'dugout_bench_' + VER;
-  const REC_MAX = 50;   // 39차: 역대 최고점수 TOP 50만 남긴다
+  // 39차: 역대 최고점수 TOP 50 → 52차: 역대 TOP 20 + 시즌 TOP 50 (ALL_MAX·SEASON_MAX)
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -36,9 +36,10 @@
   const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
   const ALLTEAMS = GAME_DATA.teams.concat(GAME_DATA.npbTeams || [], GAME_DATA.mlbTeams || [], GAME_DATA.univTeams || []);
   const TEAMCOLOR = id => (ALLTEAMS.find(t => t.id === id) || {}).color || '#1f3a68';
-  const SCHOOL = { strong: '강호', mid: '중위권', weak: '약체' };
+  const SCHOOL = { strong: '명문고', mid: '중위권', weak: '약체' };
   const HANDS = [['R', 'R', '우투우타'], ['R', 'L', '우투좌타'], ['L', 'L', '좌투좌타'], ['L', 'R', '좌투우타']];
   function handText(me) { return (me.throws === 'R' ? '우투' : '좌투') + (me.bats === 'R' ? '우타' : me.bats === 'L' ? '좌타' : '양타'); }
+  function mainPosText(f, me) { return f.mainPos === 'TW' ? '이도류' : (Sim.POSNAME[f.mainPos] || posText(me)); }
   function posText(me) { return (me.pos === 'RP' && me.flags && me.flags.closer ? '마무리투수' : Sim.POSNAME[me.pos]) + (me.twoWay ? ' · 이도류' : ''); }
 
   // ---------- 픽셀 아바타 ----------
@@ -249,42 +250,61 @@
       <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
+  // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (시즌 = 한국 시간 기준 3일, 끝나면 새 시즌)
+  const ALL_MAX = 20, SEASON_MAX = 50, SEASON_MS = 3 * 86400000, KST = 9 * 3600000;
+  function seasonInfo(now) {
+    now = now || Date.now();
+    const idx = Math.floor((now + KST) / SEASON_MS), start = idx * SEASON_MS - KST;
+    return { idx, start, end: start + SEASON_MS };
+  }
+  function leftText(ms) { const h = Math.max(0, Math.ceil(ms / 3600000)); return h >= 24 ? `${Math.floor(h / 24)}일 ${h % 24}시간` : `${h}시간`; }
   function lbLoad(force) {
     if (!LB_ON || App.lb.loading) return;
     if (!force && App.lb.at && Date.now() - App.lb.at < 60000) return;
     App.lb.loading = true;
-    lbFetch(`top50?select=id,name,pos,two_way,score,war,hof,avatar,color&order=score.desc,id.asc&limit=${REC_MAX}`)
-      .then(rows => { App.lb.list = (rows || []).map(lbRow); App.lb.err = false; })
+    const sel = 'select=id,name,pos,two_way,score,war,hof,avatar,color,created_at&order=score.desc,id.asc';
+    const S = seasonInfo();
+    Promise.all([
+      lbFetch(`top50?${sel}&limit=${ALL_MAX}`),
+      lbFetch(`top50?${sel}&created_at=gte.${new Date(S.start).toISOString()}&limit=${SEASON_MAX}`),
+    ])
+      .then(([all, season]) => { App.lb.list = (all || []).map(lbRow); App.lb.season = (season || []).map(lbRow); App.lb.err = false; })
       .catch(() => { App.lb.err = true; })
       .then(() => { App.lb.loading = false; App.lb.at = Date.now(); if (App.view === 'home') render(); });
   }
-  // 은퇴 때: 온라인 50위 점수보다 높을 때만 보낸다 (대부분의 판은 서버에 아무것도 보내지 않는다)
+  // 은퇴 때: 역대 20위 또는 이번 시즌 50위 점수보다 높을 때만 보낸다 (대부분의 판은 서버에 아무것도 보내지 않는다)
   function lbSubmit(st) {
-    const f = st.final;
+    const f = st.final, S = seasonInfo(), since = new Date(S.start).toISOString();
     st._lb = 'checking';
-    lbFetch(`top50?select=score&order=score.desc,id.asc&offset=${REC_MAX - 1}&limit=1`)
-      .then(rows => {
-        const cut = rows && rows.length ? +rows[0].score : -1;
-        if (f.score <= cut) { st._lb = 'out'; return; }
+    Promise.all([
+      lbFetch(`top50?select=score&order=score.desc,id.asc&offset=${ALL_MAX - 1}&limit=1`),
+      lbFetch(`top50?select=score&created_at=gte.${since}&order=score.desc,id.asc&offset=${SEASON_MAX - 1}&limit=1`),
+    ])
+      .then(([a, s]) => {
+        const cutA = a && a.length ? +a[0].score : -1, cutS = s && s.length ? +s[0].score : -1;
+        if (f.score <= cutA && f.score <= cutS) { st._lb = 'out'; return; }
         const c = cardData(st);
-        return lbFetch('top50', { method: 'POST', body: JSON.stringify({ name: f.name, pos: f.pos, two_way: !!f.twoWay, score: f.score, war: Math.round(f.war * 10) / 10, hof: !!(f.hof && f.hof.in), avatar: c.avatar, color: c.color, card: c }), headers: { Prefer: 'return=minimal' } })
-          .then(() => lbFetch(`top50?select=id&score=gt.${f.score}&limit=${REC_MAX}`))
-          .then(rows => { st._lb = 'in'; st._lbRank = (rows ? rows.length : 0) + 1; });
+        return lbFetch('top50', { method: 'POST', body: JSON.stringify({ name: f.name, pos: f.mainPos && f.mainPos !== 'TW' ? f.mainPos : f.pos, two_way: !!f.twoWay, score: f.score, war: Math.round(f.war * 10) / 10, hof: !!(f.hof && f.hof.in), avatar: c.avatar, color: c.color, card: c }), headers: { Prefer: 'return=minimal' } })
+          .then(() => Promise.all([
+            f.score > cutA ? lbFetch(`top50?select=id&score=gt.${f.score}&limit=${ALL_MAX}`) : null,
+            lbFetch(`top50?select=id&created_at=gte.${since}&score=gt.${f.score}&limit=${SEASON_MAX}`),
+          ]))
+          .then(([ra, rs]) => { st._lb = 'in'; st._lbRank = ra ? ra.length + 1 : 0; st._lbSRank = rs ? rs.length + 1 : 0; });
       })
       .catch(() => { st._lb = 'error'; })
       .then(() => { App.lb.at = 0; if (App.view === 'retire' && App.st === st) render(); });   // 홈으로 가면 순위표를 새로 받는다
   }
   const recKey = (r, i) => r.online ? 'o' + r.id : String(r.date || 'r' + i);
-  function rankPanel(recs, sub) {
-    const top = recs.slice().sort((a, b) => b.score - a.score).slice(0, REC_MAX);
-    const head = `<h3>역대 최고점수 TOP 50 <span class="tiny muted">${esc(sub)}</span></h3>`;
+  function rankPanel(recs, o) {
+    const max = o.max, top = recs.slice().sort((a, b) => b.score - a.score).slice(0, max);
+    const head = `<h3>${esc(o.title)} <span class="tiny muted">${esc(o.sub)}</span></h3>${o.note ? `<div class="tiny muted" style="margin:-4px 0 6px">${esc(o.note)}</div>` : ''}`;
     if (!top.length) return `<div class="panel rank50">${head}
-      <div class="podium empty">${[[1, 'silver'], [0, 'gold'], [2, 'bronze']].map(([i, m]) => `<div class="pod pod-${m}"><div class="pod-who"><b class="pod-name muted">?</b></div><div class="pod-step"><span>${i + 1}</span></div></div>`).join('')}</div>
-      <div class="muted small" style="margin-top:8px">${LB_ON && !App.lb.list && !App.lb.err ? '순위를 불러오는 중…' : '아직 기록이 없다. 은퇴한 커리어 점수가 TOP 50에 들면 여기 오른다 — 시상대 맨 위에 서 보자.'}</div></div>`;
+      ${o.podium ? `<div class="podium empty">${[[1, 'silver'], [0, 'gold'], [2, 'bronze']].map(([i, m]) => `<div class="pod pod-${m}"><div class="pod-who"><b class="pod-name muted">?</b></div><div class="pod-step"><span>${i + 1}</span></div></div>`).join('')}</div>` : ''}
+      <div class="muted small" style="margin-top:8px">${LB_ON && !App.lb.list && !App.lb.err ? '순위를 불러오는 중…' : o.empty}</div></div>`;
     const MEDAL = ['gold', 'silver', 'bronze'], MNAME = ['금', '은', '동'];
     const who = r => `${esc(Sim.POSNAME[r.pos] || r.pos)}${r.twoWay ? '·이도류' : ''}${r.hof ? ' · 명전' : ''}`;
     const hasCard = r => !!(r.card || r.online);
-    const pod = [1, 0, 2].filter(i => top[i]).map(i => {
+    const pod = o.podium ? [1, 0, 2].filter(i => top[i]).map(i => {
       const r = top[i], m = MEDAL[i], c = r.card;
       const av = r.online ? r.avatar : c ? c.avatar : (r.date || 1) % 99991, col = r.online ? r.color : c ? c.color : '#3d4a5c';
       return `<div class="pod pod-${m}">
@@ -294,22 +314,28 @@
           <b class="pod-name">${esc(r.name)}</b><span class="pod-score num">${r.score}</span><span class="tiny muted">${who(r)}</span>
         </button>
         <div class="pod-step"><span>${i + 1}</span></div></div>`;
-    }).join('');
-    const rest = top.slice(3).map((r, j) => { const i = j + 3; return `<button class="rank-row" data-act="reccard" data-v="${esc(recKey(r, i))}" ${hasCard(r) ? '' : 'disabled'}><b class="num rk">${i + 1}</b><span class="spacer"><b>${esc(r.name)}</b> <span class="muted tiny">${who(r)} · WAR ${f1(r.war)}</span></span><b class="num">${r.score}</b></button>`; }).join('');
+    }).join('') : '';
+    const from = o.podium ? 3 : 0;
+    const rest = top.slice(from).map((r, j) => { const i = j + from; return `<button class="rank-row" data-act="reccard" data-v="${esc(recKey(r, i))}" ${hasCard(r) ? '' : 'disabled'}><b class="num rk">${i + 1}</b><span class="spacer"><b>${esc(r.name)}</b> <span class="muted tiny">${who(r)} · WAR ${f1(r.war)}</span></span><b class="num">${r.score}</b></button>`; }).join('');
     return `<div class="panel rank50">${head}
-      <div class="podium">${pod}</div>
+      ${pod ? `<div class="podium">${pod}</div>` : ''}
       ${rest ? `<div class="rank-list">${rest}</div>` : ''}
-      <div class="tiny muted" style="margin-top:6px">이름을 누르면 야구카드를 볼 수 있다. 은퇴 후 점수가 TOP 50에 들면 야구카드가 남고, 못 들면 아무 기록도 남지 않는다.</div></div>`;
+      ${o.foot ? `<div class="tiny muted" style="margin-top:6px">${esc(o.foot)}</div>` : ''}</div>`;
   }
-  // 홈에 보여 줄 순위표: 온라인이 켜져 있고 불러왔으면 전체 순위, 아니면 이 기기 기록
+  // 이 기기 기록에서 이번 시즌(3일) 기록만
+  const inSeason = r => (r.date || 0) >= seasonInfo().start;
+  // 홈 순위표 2개: 역대 TOP 20(시상대) + 이번 시즌 TOP 50 (온라인이면 전체 플레이어, 아니면 이 기기 기록)
   function homeBoard(recs) {
+    const S = seasonInfo(), left = `새 시즌까지 ${leftText(S.end - Date.now())}`;
+    let all = recs, season = recs.filter(inSeason), sub = '이 기기 기록';
     if (LB_ON) {
       lbLoad();
-      if (App.lb.list) return rankPanel(App.lb.list, '전체 플레이어');
-      if (!App.lb.err) return rankPanel([], '전체 플레이어');
-      return rankPanel(recs, '온라인 연결 실패 · 이 기기 기록');
+      if (App.lb.list) { all = App.lb.list; season = App.lb.season || []; sub = '전체 플레이어'; }
+      else if (!App.lb.err) { all = []; season = []; sub = '전체 플레이어'; }
+      else sub = '온라인 연결 실패 · 이 기기 기록';
     }
-    return rankPanel(recs, '이 기기 기록');
+    return rankPanel(all, { title: '역대 최고점수 TOP 20', sub, max: ALL_MAX, podium: true, empty: '아직 기록이 없다. 시상대 맨 위에 서 보자.', foot: '이름을 누르면 야구카드를 볼 수 있다.' })
+      + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: false, note: `3일마다 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
   }
   function drawPodium() {
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
@@ -388,13 +414,15 @@
         ${c.role === 'P' ? '<div class="tiny muted" style="margin-top:2px">고교 시절은 선발로 던진다. 보직(선발·불펜·마무리)은 고교를 졸업할 때 고른다.</div>' : `<div class="seg">${posList.map(p => `<button class="${c.pos === p ? 'on' : ''}" data-act="cr-pos" data-v="${p}">${{ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', SP: '선발', RP: '불펜', CL: '마무리' }[p]}</button>`).join('')}</div>`}
         <div class="grid2">
           <div><label class="f">투타</label><select class="t" id="cr-hand">${HANDS.map((h, i) => `<option value="${i}" ${c.hand === i ? 'selected' : ''}>${h[2]}</option>`).join('')}</select></div>
-          <div><label class="f">고향 구단</label><select class="t" id="cr-home">${GAME_DATA.teams.map(t => `<option value="${t.id}" ${c.hometown === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}</select></div>
+          <div>${c.school === 'strong'
+            ? `<label class="f">명문고</label><select class="t" id="cr-hs">${GAME_DATA.eliteSchools.map(s => `<option value="${esc(s.name)}" ${c.hsName === s.name ? 'selected' : ''}>${esc(s.name)} (${GAME_DATA.regions[s.team]})</option>`).join('')}</select>`
+            : `<label class="f">연고 지역</label><select class="t" id="cr-home">${GAME_DATA.teams.map(t => `<option value="${t.id}" ${c.hometown === t.id ? 'selected' : ''}>${GAME_DATA.regions[t.id]} · ${t.name}</option>`).join('')}</select>`}</div>
         </div>
         <label class="f">훈련 방향</label>
         <div class="seg wrap">${keys.map(k => `<button class="${(c.tf || []).indexOf(k) >= 0 ? 'on' : ''}" data-act="cr-tf" data-v="${k}">${Sim.LABEL[k]}</button>`).join('')}</div>
         <label class="f">고등학교</label>
         <div class="seg">${['strong', 'mid', 'weak'].map(s => `<button class="${c.school === s ? 'on' : ''}" data-act="cr-school" data-v="${s}">${SCHOOL[s]}</button>`).join('')}</div>
-        <div class="tiny muted" style="margin-top:6px">${{ strong: '전국대회 4강 단골. 1학년은 대부분 벤치지만 스카우트 눈에 잘 띈다.', mid: '8강 안팎. 2학년부터 주전을 노릴 수 있다.', weak: '초반 탈락이 잦다. 1학년부터 주전이지만 스카우트 노출이 적다.' }[c.school]}</div>
+        <div class="tiny muted" style="margin-top:6px">${{ strong: '지역 명문고. 전국대회 4강 단골이라 1학년은 대부분 벤치지만, 스카우트 눈에 잘 띄고 평가도 조금 더 후하다.', mid: '8강 안팎. 2학년부터 주전을 노릴 수 있다.', weak: '초반 탈락이 잦다. 1학년부터 주전이지만 스카우트 노출이 적다.' }[c.school]} 실력이 상위 라운드감이면 연고 구단이 드래프트에서 먼저 관심을 보인다.</div>
       </div>
       <div class="panel">
         <div class="row"><h3 style="margin:0">시작 후보</h3><span class="spacer"></span><button class="btn small" data-act="cr-reroll">다른 후보 보기</button></div>
@@ -413,13 +441,14 @@
     const num = document.getElementById('cr-num'); if (num) c.num = Math.max(0, Math.min(99, parseInt(num.value, 10) || 0));
     const h = document.getElementById('cr-hand'); if (h) c.hand = +h.value;
     const ht = document.getElementById('cr-home'); if (ht) c.hometown = ht.value;
+    const hs = document.getElementById('cr-hs'); if (hs) { const s = GAME_DATA.eliteSchools.find(x => x.name === hs.value); if (s) { c.hsName = s.name; c.hometown = s.team; } }
   }
   function startCareer() {
     readCreateInputs();
     const c = App.create;
     const hand = HANDS[c.hand];
     const seed = (Math.random() * 4294967295) >>> 0;
-    App.st = Sim.newGame(seed, { name: c.name, num: c.num, role: c.role, pos: c.pos === 'CL' ? 'RP' : c.pos, closer: c.pos === 'CL', throws: hand[0], bats: hand[1], school: c.school, hometown: c.hometown, r: c.cands[c.pick].r, avatar: c.avatar, trainFocus: c.tf || [] });
+    App.st = Sim.newGame(seed, { name: c.name, num: c.num, role: c.role, pos: c.pos === 'CL' ? 'RP' : c.pos, closer: c.pos === 'CL', throws: hand[0], bats: hand[1], school: c.school, hometown: c.hometown, hsName: c.school === 'strong' ? c.hsName : null, r: c.cands[c.pick].r, avatar: c.avatar, trainFocus: c.tf || [] });
     App.view = 'main'; App.tab = 'career'; App.flipped = false;
     save(); render();
   }
@@ -429,11 +458,14 @@
   // ================================================================
   function cardHTML(st) {
     const me = st.me, v = Sim.view(st);
-    const color = me.team ? TEAMCOLOR(me.team) : '#3d4a5c';
-    const emblem = me.team ? esc(Sim.teamName(st, me.team)) : (me.stage === 'univ' ? '大' : me.stage === 'indie' ? 'IND' : '高');
+    // 52차: 은퇴한 카드는 프로에서 가장 많이 뛴 팀·포지션으로
+    const fin = st.done && st.final && st.final.mainTeamName ? st.final : null;
+    const cTeam = fin ? fin.mainTeam : me.team;
+    const color = cTeam ? TEAMCOLOR(cTeam) : '#3d4a5c';
+    const emblem = fin ? esc(fin.mainTeamName) : me.team ? esc(Sim.teamName(st, me.team)) : (me.stage === 'univ' ? '大' : me.stage === 'indie' ? 'IND' : '高');
     const keys = Sim.mainKeys(me), opp = Sim.oppKeys(me);
-    const sub = `${posText(me)} · ${handText(me)} · ${me.age}세`;
-    const team = me.stage === 'hs' ? `${SCHOOL[me.school]} 고교 ${Math.min(3, me.grade)}학년` : me.stage === 'univ' ? `대학 ${me.univYears + 1}학년` : me.stage === 'indie' ? '독립리그' : me.stage === 'retired' ? '은퇴' : me.stage === 'mil' ? (me.milType === 'sangmu' ? `상무 · 군 복무 ${me.milYears + 1}년차` : `현역 복무 ${me.milYears + 1}년차`) : `${Sim.teamName(st, me.team)} · ${me.lvl === 1 ? '1군' : minorName(st)}`;
+    const sub = `${fin ? mainPosText(fin, me) : posText(me)} · ${handText(me)} · ${me.age}세`;
+    const team = fin ? `${fin.mainTeamName} · 통산` : me.stage === 'hs' ? (me.hsName ? `${me.hsName} ${Math.min(3, me.grade)}학년` : `${me.school === 'strong' ? '명문고' : SCHOOL[me.school] + ' 고교'} ${Math.min(3, me.grade)}학년`) : me.stage === 'univ' ? `대학 ${me.univYears + 1}학년` : me.stage === 'indie' ? '독립리그' : me.stage === 'retired' ? '은퇴' : me.stage === 'mil' ? (me.milType === 'sangmu' ? `상무 · 군 복무 ${me.milYears + 1}년차` : `현역 복무 ${me.milYears + 1}년차`) : `${Sim.teamName(st, me.team)} · ${me.lvl === 1 ? '1군' : minorName(st)}`;
     const hof = st.done && st.final && st.final.hof && st.final.hof.in ? st.final.hof : null;
     const grade = hof ? 'HALL OF FAME' : { bronze: 'BRONZE', silver: 'SILVER', gold: 'GOLD', legend: 'LEGEND' }[v.grade];
     const fcls = hof ? 'hof' : v.grade;
@@ -504,9 +536,8 @@
       <div class="info">${info.map(([k, x]) => `<div><div class="k">${k}</div><div class="v">${esc(x)}</div></div>`).join('')}</div>
       ${contractPanel(st)}${pitchPanel(st)}
       ${focusPanel(st)}      ${me.stage === 'hs' && me.grade >= 3 && me.scout.perf.length ? `<div class="panel small">예상 지명 범위: <b>${Sim.draftRange(me.scout.score)}</b></div>` : ''}
-      <div class="tabs">${[['career', '역대 시즌'], ['total', '역대 커리어'], ['comp', '대회별'], ['league', '리그'], ['story', '인생']].map(([k, t]) => `<button class="${App.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}</button>`).join('')}</div>
+      <div class="tabs">${[['career', '역대 시즌'], ['total', '역대 커리어'], ['comp', '대회별'], ['league', '리그'], ['story', Sim.canPost(st) ? '인생 ✈' : '인생']].map(([k, t]) => `<button class="${App.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}</button>`).join('')}</div>
       ${App.tab === 'career' ? tabCareer(st) : App.tab === 'comp' ? tabComp(st) : App.tab === 'total' ? tabTotal(st) : App.tab === 'league' ? tabLeague(st) : tabStory(st)}
-      ${Sim.canPost(st) ? `<div class="panel small post-box"><b>해외 진출 · 포스팅</b><div class="muted tiny" style="margin:4px 0 8px">신청하면 해외 구단 응찰을 받는다. 능력치·최근 성적이 모자라면 아무 데서도 응찰하지 않을 수 있다. 비시즌에 한 번.</div><button class="btn block" data-act="post">포스팅 신청</button></div>` : ''}
       ${me.stage === 'pro' && me.age >= 35 ? `<div style="text-align:center;margin-top:16px"><button class="btn small" data-act="retire-now">은퇴 선언</button></div>` : ''}
       ${App.dev ? adminPanel(st) : ''}
       <div class="dock"><div class="in"><button class="btn go block" data-act="${pending ? 'next-event' : 'play'}">${goLabel}</button></div></div>`;
@@ -723,8 +754,13 @@
       ${stat.length ? `<div class="small muted" style="margin:6px 0">${stat.map(esc).join('<br>')}</div>` : ''}
       <div class="aw-list">${list}</div></div>`;
   }
+  // 52차: 포스팅 신청은 '인생' 탭의 은퇴하기 바로 아래
+  function postBox(st) {
+    return Sim.canPost(st) ? `<div class="panel small post-box"><b>해외 진출 · 포스팅</b><div class="muted tiny" style="margin:4px 0 8px">신청하면 해외 구단 응찰을 받는다. 능력치·최근 성적이 모자라면 아무 데서도 응찰하지 않을 수 있다. 비시즌에 한 번.</div><button class="btn block" data-act="post">포스팅 신청</button></div>` : '';
+  }
   function tabStory(st) {
     return `${st.done ? '' : `<div class="panel small retire-box"><div class="row"><div><b>은퇴하기</b><div class="tiny muted">지금 유니폼을 벗고 바로 은퇴 결산(엔딩)으로 넘어간다.</div></div><span class="spacer"></span><button class="btn small red" data-act="retire-now">은퇴하기</button></div></div>`}
+      ${postBox(st)}
       <div class="panel"><h3>인생 이야기</h3>${st.story.slice().reverse().map(s => `<div class="story-item"><span class="y">${s.year}<br>${s.age}세</span><span>${esc(s.text)}</span></div>`).join('')}</div>`;
   }
   // ---------- 기록 계산 (타자·투수) ----------
@@ -1094,13 +1130,13 @@
     return `
       <div class="topbar"><button class="btn small" data-act="home">홈</button><span class="title">은퇴 결산</span><span class="spacer"></span>${devToggle()}</div>
       ${cardHTML(st)}
+      ${f.oneLine ? `<div class="panel reveal one-line"><span class="tiny muted">커리어 한줄평</span><b>“${esc(f.oneLine)}”</b></div>` : ''}
       ${f.hof && f.hof.in ? `<div class="panel reveal hof-panel"><div class="hof-title">명예의 전당 헌액</div><div class="small">${esc(f.name)}의 이름이 명예의 전당에 새겨졌다.</div><div class="stamps" style="justify-content:center">${f.hof.why.map(w => `<span class="stamp gold">${esc(w)}</span>`).join('')}</div><button class="btn small" data-act="hof-replay" style="margin-top:10px">헌액식 다시 보기</button></div>`
         : `<div class="panel reveal small muted" style="text-align:center">명예의 전당 헌액 기준에는 닿지 못했다.</div>`}
       <div class="panel reveal" id="share-src">
         <div class="big-score"><span>CAREER SCORE</span><b class="num">${f.score}</b>
           ${pct != null ? `<span class="pct-badge">전체 커리어 대비 상위 ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</span>` : `<span class="tiny muted" id="pct-wait">비교 데이터 만드는 중…</span>`}
-          ${LB_ON && st._lb ? `<span class="small" style="margin-top:6px">${st._lb === 'checking' ? '전체 플레이어 TOP 50 순위 확인 중…' : st._lb === 'in' ? `🏅 전체 플레이어 역대 최고점수 <b>${st._lbRank}위</b> — 야구카드가 TOP 50에 남았다` : st._lb === 'out' ? '전체 플레이어 TOP 50에는 들지 못했다 — 이 커리어 기록은 남지 않는다' : '온라인 순위에 연결하지 못했다 — 이 기기 기록에만 남았다'}</span>`
-            : st._rank != null ? `<span class="small" style="margin-top:6px">${st._rank ? `🏅 역대 최고점수 <b>${st._rank}위</b> — 야구카드가 TOP 50에 남았다` : '역대 최고점수 TOP 50에는 들지 못했다 — 이 커리어 기록은 남지 않는다'}</span>` : ''}
+          ${rankLine(st)}
         </div>
         <div class="small" style="margin-top:12px;text-align:center">${f.retireAge}세 은퇴 · ${f.seasons}시즌 · 통산 WAR <b>${f1(f.war)}</b>${f.twoWay ? ` (타 ${f1(f.warB)} / 투 ${f1(f.warP)})` : ''}<br>${esc(f.teams.join(' → ') || '프로 무대를 밟지 못했다')}</div>
         ${lines.length ? `<div class="small" style="margin-top:10px;display:grid;gap:4px">${lines.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : ''}
@@ -1188,23 +1224,34 @@
         <button class="btn go" data-act="hof-ok">헌액 카드 받기</button>
       </div></div>`;
   }
+  // 52차: 은퇴 결산의 순위 한 줄 — 순위에 들었을 때만 보여 준다 (못 들면 아무 문구 없음)
+  function rankLine(st) {
+    const span = t => `<span class="small" style="margin-top:6px">${t}</span>`;
+    const txt = (a, s) => a ? `🏅 역대 최고점수 <b>${a}위</b>${s ? ` · 이번 시즌 <b>${s}위</b>` : ''}` : s ? `🏅 이번 시즌 최고점수 <b>${s}위</b>` : '';
+    if (LB_ON && st._lb) {
+      if (st._lb === 'checking') return span('순위 확인 중…');
+      if (st._lb === 'in') { const t = txt(st._lbRank, st._lbSRank); return t ? span(t + ' — 야구카드가 순위표에 남았다') : ''; }
+      if (st._lb === 'error') return span('온라인 순위에 연결하지 못했다 — 이 기기 기록에만 남았다');
+      return '';
+    }
+    const t = txt(st._rank, st._srank);
+    return t ? span(t + ' — 야구카드가 순위표에 남았다') : '';
+  }
   function recordRetire() {
     const st = App.st;
     if (!st.final || st._recorded) return;
     st._recorded = true;
     const recs = store.get(KEY_REC, []);
     const f = st.final;
-    // 40차: 점수만 비교해 TOP 50 안에 들면 순위표에 들어가고(야구카드 데이터만), 밀려난 51위와 못 든 커리어는 아무것도 남기지 않는다
-    recs.sort((a, b) => b.score - a.score);
-    const cut = recs.length >= REC_MAX ? recs[REC_MAX - 1].score : -Infinity;
-    let mine = null;
-    if (f.score > cut) {
-      mine = { name: f.name, pos: f.pos, twoWay: f.twoWay, score: f.score, war: f.war, hof: !!(f.hof && f.hof.in), date: Date.now(), card: cardData(st) };
-      recs.push(mine);
-      recs.sort((a, b) => b.score - a.score);
-    }
-    const top = recs.slice(0, REC_MAX);
-    st._rank = mine ? top.indexOf(mine) + 1 : 0;   // 0이면 TOP 50 밖 → 기록 없음
+    // 40차: 점수만 비교해 순위표에 들면 야구카드만 남기고, 못 들면 아무것도 남기지 않는다
+    // 52차: 역대 TOP 20 + 이번 시즌(3일) TOP 50 — 둘 중 하나라도 들면 남긴다
+    const byScore = (a, b) => b.score - a.score;
+    const mine = { name: f.name, pos: f.mainPos && f.mainPos !== 'TW' ? f.mainPos : f.pos, twoWay: f.twoWay, score: f.score, war: f.war, hof: !!(f.hof && f.hof.in), date: Date.now(), card: cardData(st) };
+    const all = recs.concat([mine]).sort(byScore);
+    const keepAll = all.slice(0, ALL_MAX), keepSeason = all.filter(inSeason).slice(0, SEASON_MAX);
+    const top = all.filter(r => keepAll.indexOf(r) >= 0 || keepSeason.indexOf(r) >= 0);
+    st._rank = keepAll.indexOf(mine) + 1;      // 역대 순위 (0이면 TOP 20 밖)
+    st._srank = keepSeason.indexOf(mine) + 1;  // 이번 시즌 순위 (0이면 TOP 50 밖)
     bump('retire');   // 50차: 이용 통계
     if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
@@ -1277,10 +1324,11 @@
     const total = isP ? (t.outs ? ['통산', '', t.G, t.W, t.L, t.SV, ip(t), f2(Sim.ERA(t)), t.K, f1(f.war)] : null)
       : (t.PA ? ['통산', '', t.G, r3(Sim.AVG(t)), t.HR, t.RBI, t.SB, r3(Sim.OPS(t)), f1(f.war)] : null);
     const shown = me.shown || me.r;
+    const mt = f.mainTeam || me.team;   // 52차: 가장 많이 뛴 팀·포지션
     return {
-      name: me.name, num: me.num, avatar: me.avatar || 1, color: me.team ? TEAMCOLOR(me.team) : '#3d4a5c', team: me.team ? Sim.teamName(st, me.team) : '',
-      grade: v.grade, hof: f.hof && f.hof.in ? f.hof.year : null, ovr: Sim.disp(v.ovr),
-      info: `${posText(me)} · ${handText(me)} · ${f.retireAge}세 은퇴 · 통산 WAR ${f1(f.war)}`,
+      name: me.name, num: me.num, avatar: me.avatar || 1, color: mt ? TEAMCOLOR(mt) : '#3d4a5c', team: f.mainTeamName || (me.team ? Sim.teamName(st, me.team) : ''),
+      grade: v.grade, hof: f.hof && f.hof.in ? f.hof.year : null, ovr: Sim.disp(v.ovr), line: f.oneLine || '',
+      info: `${f.mainPos ? mainPosText(f, me) : posText(me)} · ${handText(me)} · ${f.retireAge}세 은퇴 · 통산 WAR ${f1(f.war)}`,
       stats: Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]), year: st.year - 1, isP, rows, total,
       aw: (f.awList || []).slice(0, 12), teams: (f.teams || []).join(' → ').slice(0, 44),
     };
@@ -1318,6 +1366,7 @@
       c.fillStyle = val >= 80 ? '#c4352b' : '#1f3a68'; roundRect(c, X + 140, y, Math.max(16, 340 * val / 100), 16, 8); c.fill();
       c.fillStyle = '#1b2233'; c.font = '900 22px sans-serif'; c.textAlign = 'right'; c.fillText(String(val), X + CW - 44, y + 17); c.textAlign = 'left';
     });
+    if (d.line) { c.fillStyle = '#4a5163'; c.font = 'italic 700 18px sans-serif'; c.fillText(`“${String(d.line).slice(0, 34)}”`, X + 44, G + CH - 64); }   // 52차: 한줄평
     c.fillStyle = '#858a96'; c.font = '600 16px sans-serif'; c.fillText(`${d.year} FINAL · 골글 들고 명전으로`, X + 44, G + CH - 36);
     // ---- 뒷면 ----
     const BX = G * 2 + CW; frame(BX);
@@ -1431,7 +1480,11 @@
       case 'cr-tf': { const tf = App.create.tf || []; const i = tf.indexOf(v); if (i >= 0) tf.splice(i, 1); else { tf.push(v); if (tf.length > 2) tf.shift(); } App.create.tf = tf; render(); break; }
       case 'cr-role': App.create.role = v; App.create.pos = v === 'P' ? 'SP' : 'SS'; App.create.pick = 0; App.create.tf = v === 'P' ? ['vel', 'ctl'] : ['con', 'pow']; App.create.candSeed = (Math.random() * 1e9) >>> 0; rollCands(); render(); break;
       case 'cr-pos': App.create.pos = v; rollCands(); render(); break;
-      case 'cr-school': App.create.school = v; render(); break;
+      case 'cr-school': {
+        const c = App.create; c.school = v;
+        if (v === 'strong' && !c.hsName) { const s = GAME_DATA.eliteSchools.find(x => x.team === c.hometown) || GAME_DATA.eliteSchools[0]; c.hsName = s.name; c.hometown = s.team; }
+        render(); break;
+      }
       case 'cr-pick': App.create.pick = +v; render(); break;
       case 'cr-reroll': App.create.candSeed = (Math.random() * 1e9) >>> 0; App.create.pick = 0; rollCands(); render(); break;
       case 'cr-ava': App.create.avatar = (Math.random() * 1e6) | 0; render(); break;
@@ -1494,6 +1547,7 @@
   document.addEventListener('change', e => {
     if (App.view !== 'create') return;
     if (e.target.id === 'cr-home') { App.create.hometown = e.target.value; readCreateInputs(); render(); }
+    if (e.target.id === 'cr-hs') { readCreateInputs(); render(); }
   });
 
   // 27차: 패치가 배포되면 열려 있는 탭에 새로고침 안내 — 예전 코드로 계속 플레이하는 일을 막는다
