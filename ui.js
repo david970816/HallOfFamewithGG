@@ -1594,15 +1594,27 @@
     if (q === 'off') { store.del(KEY_ADMIN); store.set(KEY_DEV, false); App.admin = false; App.dev = false; clean(); render(); return; }
     if (!(window.crypto && crypto.subtle)) { clean(); return; }
     sha256(q).then(h => {
-      if (h === ADMIN_HASH) { store.set(KEY_ADMIN, q); App.admin = true; App.dev = !!store.get(KEY_DEV, false); }
+      if (h === ADMIN_HASH) { store.set(KEY_ADMIN, q); App.admin = true; App.dev = !!store.get(KEY_DEV, false); logAdmin('login'); markAdminSession(); }
+      else logAdmin('fail');
       clean(); render();
     }).catch(clean);
   })();
+  function devId() {
+    let d = store.get('dugout_devid', null);
+    if (typeof d !== 'string' || !d) { d = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); store.set('dugout_devid', d); }
+    return d;
+  }
+  function logAdmin(kind) {
+    if (!LB_ON || LOCALHOST) return;
+    lbFetch('rpc/log_admin', { method: 'POST', body: JSON.stringify({ k: kind, dev: devId(), agent: (navigator.userAgent || '').slice(0, 300) }) }).catch(() => { });
+  }
+  function markAdminSession() { try { sessionStorage.setItem('dugout_admin_seen', '1'); } catch (e) { } }
+  function adminSessionLogged() { try { return sessionStorage.getItem('dugout_admin_seen') === '1'; } catch (e) { return false; } }
   (function adminCheck() {
     const k = store.get(KEY_ADMIN, null);
     if (typeof k !== 'string' || !k || !(window.crypto && crypto.subtle)) return;
     sha256(k).then(h => {
-      if (h === ADMIN_HASH) { App.admin = true; App.dev = !!store.get(KEY_DEV, false); render(); }
+      if (h === ADMIN_HASH) { App.admin = true; App.dev = !!store.get(KEY_DEV, false); if (!adminSessionLogged() && !/[?&]admin=/.test(location.search)) { logAdmin('session'); markAdminSession(); } render(); }
       else store.del(KEY_ADMIN);
     }).catch(() => { });
   })();
