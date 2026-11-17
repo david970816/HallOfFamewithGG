@@ -1179,6 +1179,7 @@
     const cup = t.gold
       ? '<g class="tro-cup"><path d="M70 6 L80 6 L86 22 L74 22 Z M80 6 L90 6 L86 22 Z" fill="#c4352b"/><circle cx="80" cy="30" r="11" fill="#f5c542" stroke="#b8860b" stroke-width="2"/><text x="80" y="34" text-anchor="middle" font-size="11" font-weight="900" fill="#8a6200">1</text></g>'
       : '<g class="tro-cup"><path d="M66 6 H94 V16 Q94 34 80 36 Q66 34 66 16 Z" fill="#f5c542" stroke="#b8860b" stroke-width="2"/><path d="M66 10 Q56 10 58 20 Q60 26 67 26" fill="none" stroke="#b8860b" stroke-width="3"/><path d="M94 10 Q104 10 102 20 Q100 26 93 26" fill="none" stroke="#b8860b" stroke-width="3"/><rect x="76" y="36" width="8" height="7" fill="#d4a52f"/><rect x="70" y="43" width="20" height="5" rx="1" fill="#8a6200"/><path d="M71 12 Q72 24 78 30" stroke="#fff6c8" stroke-width="2" fill="none" opacity=".8"/></g>';
+    App.troView = App.view;
     $modal.innerHTML = `<div class="tro-overlay" data-act="trophy-ok">
       <div class="hof-confetti">${conf}</div>
       <div class="tro-box">
@@ -1461,9 +1462,12 @@
     if (App.view === 'create') afterCreate();
     if (App.view === 'home') { startHero(); drawPodium(); }
     if (App.view === 'main' || App.view === 'retire') afterCard();
-    if (App.view !== 'main') $modal.innerHTML = '';
+    // 59차: 우승 애니메이션이 떠 있는 동안 같은 화면이 다시 그려져도(국제대회 마지막 경기 0.8초 뒤 등) 지우지 않는다 — '계속'을 눌러야 닫힘
+    const troOpen = App.troView && App.troView === App.view && $modal.querySelector('.tro-overlay');
+    if (App.troView && App.troView !== App.view) App.troView = null;
+    if (App.view !== 'main' && !troOpen) $modal.innerHTML = '';
     if (App.view === 'home' && App.noticePop) noticeModal();   // 51차: 홈이 다시 그려져도 공지 팝업 유지
-    if (App.view === 'post' || App.view === 'result' || App.view === 'intl') maybeTrophy();
+    if (!troOpen && (App.view === 'post' || App.view === 'result' || App.view === 'intl')) maybeTrophy();
     if (App.view === 'retire' && App.st && App.st.final && App.st.final.hof && App.st.final.hof.in && !App.st._hofSeen) showHof();
   }
   function goAfterSeason() {
@@ -1577,7 +1581,7 @@
       case 'reccard-close': if (el.classList.contains('card-overlay') && e.target.closest('.card-box')) break; $modal.innerHTML = ''; break;
       case 'hof-ok': if (e.target.closest('.hof-box') && !e.target.closest('[data-act="hof-ok"].btn')) break; App.st._hofSeen = true; save(); $modal.innerHTML = ''; window.scrollTo(0, 0); break;
       case 'hof-replay': showHof(); break;
-      case 'trophy-ok': if (e.target.closest('.tro-box') && !e.target.closest('[data-act="trophy-ok"].btn')) break; $modal.innerHTML = ''; break;
+      case 'trophy-ok': if (e.target.closest('.tro-box') && !e.target.closest('[data-act="trophy-ok"].btn')) break; $modal.innerHTML = ''; App.troView = null; break;
       case 'intl-skip': App.intlShown = App.intlRes.games.length; render(); break;
       case 'intl-done': App.intlRes = null; if (App.afterIntl) { const f = App.afterIntl; App.afterIntl = null; f(); break; } App.view = 'main'; render(); window.scrollTo(0, 0); if (App.st.pending.length) showEvent(); break;
       case 'tf-open': App.tfOpen = true; App.tfPick = []; render(); break;
