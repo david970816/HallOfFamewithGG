@@ -148,7 +148,7 @@
     const rows = keys.map(k => { const cur = Sim.disp(me.r[k]), pa = Sim.disp(d.pa[k]); return `<div class="pa-row"><span>${Sim.LABEL[k]}</span><span class="pa-trk"><span class="pot" style="width:${pa}%"></span><span class="cur" style="width:${cur}%"></span></span><span class="v">${cur} / ${pa}</span></div>`; }).join('');
     const pk = d.peak ? `${d.peak.from}~${d.peak.from + d.peak.len - 1}세 (+${d.peak.boost})` : '없음';
     const tf = (me.trainFocus || []).map(k => Sim.LABEL[k]).join('·') || '없음';
-    const kv = [['잠재 등급', d.tier], ['성장 유형', GROWTH_T[d.growth] || d.growth], ['노화 유형', AGING_T[d.aging] || d.aging], ['전성기', pk], ['훈련 방향', `${tf}${me.age < Sim.BAL.trainFocus.untilAge ? ` (${Sim.BAL.trainFocus.untilAge - 1}세 시즌까지)` : ' (종료)'}`], ['관리', d.care], ['감독 신뢰', d.trust], ['인기', d.pop], ['내구', d.dur], ['큰 부상', d.bigInj], ['스카우트 점수', d.scout], ['1군 연차', `${d.svc} / FA ${d.faAt == null ? '-' : d.faAt}`]];
+    const kv = [['잠재 등급', d.tier], ['성장 유형', GROWTH_T[d.growth] || d.growth], ['노화 유형', AGING_T[d.aging] || d.aging], ['전성기', pk], ['훈련 부스트', `${tf}${me.age < Sim.BAL.trainFocus.untilAge ? ` (${Sim.BAL.trainFocus.untilAge - 1}세 시즌까지)` : ' (종료)'}`], ['관리', d.care], ['감독 신뢰', d.trust], ['인기', d.pop], ['내구', d.dur], ['큰 부상', d.bigInj], ['스카우트 점수', d.scout], ['1군 연차', `${d.svc} / FA ${d.faAt == null ? '-' : d.faAt}`]];
     return `<div class="panel admin-panel"><h3>관리자 · 숨은 값</h3><div class="tiny muted">막대: 진한 색 = 현재, 연한 금색 = 잠재 상한(PA)</div>${rows}
       <div class="admin-kv">${kv.map(([k, v]) => `<div><span class="muted">${k}</span> <b>${esc(v)}</b></div>`).join('')}</div>
       <div class="tiny muted" style="margin-top:8px">커리어 점수(현재) ${Sim.careerScore(st)} · 플래그 ${esc(JSON.stringify(d.flags))}</div></div>`;
@@ -384,7 +384,8 @@
   // ================================================================
   function randName() { const D = GAME_DATA; const p = a => a[Math.floor(Math.random() * a.length)]; return p(D.surnames) + p(D.given1) + p(D.given2); }
   function newCreate() {
-    App.create = { name: randName(), num: 1 + Math.floor(Math.random() * 99), role: 'B', pos: 'SS', hand: 0, school: 'mid', hometown: GAME_DATA.teams[Math.floor(Math.random() * 10)].id, pick: 0, candSeed: (Math.random() * 1e9) >>> 0, avatar: (Math.random() * 1e6) | 0, tf: ['con', 'pow'] };
+    const hs0 = GAME_DATA.eliteSchools[Math.floor(Math.random() * GAME_DATA.eliteSchools.length)];
+    App.create = { name: randName(), num: 1 + Math.floor(Math.random() * 99), role: 'B', pos: 'SS', hand: 0, school: 'mid', hsName: hs0.name, hometown: hs0.team, pick: 0, candSeed: (Math.random() * 1e9) >>> 0, avatar: (Math.random() * 1e6) | 0, tf: ['con', 'pow'] };
     rollCands();
   }
   function rollCands() {
@@ -412,15 +413,11 @@
         ${c.role === 'P' ? '<div class="tiny muted" style="margin-top:2px">고교 시절은 선발로 던진다. 보직(선발·불펜·마무리)은 고교를 졸업할 때 고른다.</div>' : `<div class="seg">${posList.map(p => `<button class="${c.pos === p ? 'on' : ''}" data-act="cr-pos" data-v="${p}">${{ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', SP: '선발', RP: '불펜', CL: '마무리' }[p]}</button>`).join('')}</div>`}
         <div class="grid2">
           <div><label class="f">투타</label><select class="t" id="cr-hand">${HANDS.map((h, i) => `<option value="${i}" ${c.hand === i ? 'selected' : ''}>${h[2]}</option>`).join('')}</select></div>
-          <div>${c.school === 'strong'
-            ? `<label class="f">명문고</label><select class="t" id="cr-hs">${GAME_DATA.eliteSchools.map(s => `<option value="${esc(s.name)}" ${c.hsName === s.name ? 'selected' : ''}>${esc(s.name)} (${GAME_DATA.regions[s.team]})</option>`).join('')}</select>`
-            : `<label class="f">연고 지역</label><select class="t" id="cr-home">${GAME_DATA.teams.map(t => `<option value="${t.id}" ${c.hometown === t.id ? 'selected' : ''}>${GAME_DATA.regions[t.id]} · ${t.name}</option>`).join('')}</select>`}</div>
+          <div><label class="f">고등학교</label><select class="t" id="cr-hs">${GAME_DATA.eliteSchools.map(s => `<option value="${esc(s.name)}" ${c.hsName === s.name ? 'selected' : ''}>${esc(s.name)} (${GAME_DATA.regions[s.team]})</option>`).join('')}</select></div>
         </div>
-        <label class="f">훈련 방향</label>
+        <div class="tiny muted" style="margin-top:6px">실력이 상위 라운드감이면 고등학교 연고 구단이 드래프트에서 먼저 관심을 보인다.</div>
+        <label class="f">훈련 부스트</label>
         <div class="seg wrap">${keys.map(k => `<button class="${(c.tf || []).indexOf(k) >= 0 ? 'on' : ''}" data-act="cr-tf" data-v="${k}">${Sim.LABEL[k]}</button>`).join('')}</div>
-        <label class="f">고등학교</label>
-        <div class="seg">${['strong', 'mid', 'weak'].map(s => `<button class="${c.school === s ? 'on' : ''}" data-act="cr-school" data-v="${s}">${SCHOOL[s]}</button>`).join('')}</div>
-        <div class="tiny muted" style="margin-top:6px">${{ strong: '지역 명문고. 전국대회 4강 단골이라 1학년은 대부분 벤치지만, 스카우트 눈에 잘 띄고 평가도 조금 더 후하다.', mid: '8강 안팎. 2학년부터 주전을 노릴 수 있다.', weak: '초반 탈락이 잦다. 1학년부터 주전이지만 스카우트 노출이 적다.' }[c.school]} 실력이 상위 라운드감이면 연고 구단이 드래프트에서 먼저 관심을 보인다.</div>
       </div>
       <div class="panel">
         <div class="row"><h3 style="margin:0">시작 후보</h3><span class="spacer"></span><button class="btn small" data-act="cr-reroll">다른 후보 보기</button></div>
@@ -446,7 +443,7 @@
     const c = App.create;
     const hand = HANDS[c.hand];
     const seed = (Math.random() * 4294967295) >>> 0;
-    App.st = Sim.newGame(seed, { name: c.name, num: c.num, role: c.role, pos: c.pos === 'CL' ? 'RP' : c.pos, closer: c.pos === 'CL', throws: hand[0], bats: hand[1], school: c.school, hometown: c.hometown, hsName: c.school === 'strong' ? c.hsName : null, r: c.cands[c.pick].r, avatar: c.avatar, trainFocus: c.tf || [] });
+    App.st = Sim.newGame(seed, { name: c.name, num: c.num, role: c.role, pos: c.pos === 'CL' ? 'RP' : c.pos, closer: c.pos === 'CL', throws: hand[0], bats: hand[1], school: c.school, hometown: c.hometown, hsName: c.hsName || null, r: c.cands[c.pick].r, avatar: c.avatar, trainFocus: c.tf || [] });
     App.view = 'main'; App.tab = 'career'; App.flipped = false;
     save(); render();
   }
@@ -1092,7 +1089,7 @@
     if (!it) { $modal.innerHTML = ''; return; }
     const who = it.who || '';
     $modal.innerHTML = `<div class="overlay"><div class="sheet">
-      <div class="speaker"><div class="avatar-sq">${esc(who.slice(0, 1))}</div><div><b>${esc(who)}</b><span class="chip">${esc(it.cat || '')}</span></div><span class="spacer"></span><span class="tiny muted">${it.id === 'intlCall' ? `${st.year - 1}년 시즌 중 · ${st.me.age - 1}세` : `${st.year - 1}년 겨울 · ${st.me.age}세`}</span></div>
+      <div class="speaker"><div class="avatar-sq">${esc(who.slice(0, 1))}</div><div><b>${esc(who)}</b><span class="chip">${esc(it.cat || '')}</span></div><span class="spacer"></span><span class="tiny muted">${it.id === 'intlCall' ? `${st.year - 1}년 시즌 중 · ${st.me.age - 1}세` : it.id === 'draft' || it.id === 'usDirect' ? `${st.year - 1}년 ${it.id === 'draft' ? '9월' : '여름'} · ${st.me.age - 1}세` : `${st.year - 1}년 겨울 · ${st.me.age}세`}</span></div>
       <div class="bubble">${esc(it.text)}</div>
       ${App.reaction == null ? `<div class="choices">${it.ch.map((c, i) => `<button class="btn block" data-act="choose" data-v="${i}">${esc(c)}</button>`).join('')}</div>` : ''}
     </div></div>`;
@@ -1312,27 +1309,39 @@
   // 39차: 카드는 기록 데이터(cardData)로 그린다 → 은퇴 후 저장 데이터를 지워도 기록실에서 카드를 다시 볼 수 있다
   function cardData(st) {
     const me = st.me, f = st.final, v = Sim.view(st);
-    const isP = me.role === 'P' && !me.twoWay;
-    const rows = st.hist.filter(h => h.war != null && (isP ? h.pit && !h.pit.fut : h.bat && !h.bat.fut)).slice(-30).map(h => {
-      const tm = String(h.team).slice(0, 6);
-      if (isP) { const p = h.pit; return [String(h.year).slice(2), tm, p.G || 0, p.W || 0, p.L || 0, p.SV || 0, ip(p), f2(Sim.ERA(p)), p.K, f1(h.war)]; }
-      const b = h.bat; return [String(h.year).slice(2), tm, b.G || '-', r3(Sim.AVG(b)), b.HR, b.RBI, b.SB, r3(Sim.OPS(b)), f1(h.war)];
-    });
-    const t = isP ? f.pit : f.bat;
-    const total = isP ? (t.outs ? ['통산', '', t.G, t.W, t.L, t.SV, ip(t), f2(Sim.ERA(t)), t.K, f1(f.war)] : null)
-      : (t.PA ? ['통산', '', t.G, r3(Sim.AVG(t)), t.HR, t.RBI, t.SB, r3(Sim.OPS(t)), f1(f.war)] : null);
+    const isP = me.role === 'P' && !me.twoWay, tw = !!me.twoWay;
+    // 55차: 이도류는 타자·투수 기록을 따로 (시즌 WAR도 타자분·투수분으로 나눠서)
+    const tableOf = P => {
+      const wk = tw ? (P ? 'warP' : 'warB') : 'war';
+      const rows = st.hist.filter(h => h.war != null && (P ? h.pit && !h.pit.fut : h.bat && !h.bat.fut)).slice(-30).map(h => {
+        const tm = String(h.team).slice(0, 6), w = h[wk] != null ? f1(h[wk]) : tw ? '-' : f1(h.war);
+        if (P) { const p = h.pit; return [String(h.year).slice(2), tm, p.G || 0, p.W || 0, p.L || 0, p.SV || 0, ip(p), f2(Sim.ERA(p)), p.K, w]; }
+        const b = h.bat; return [String(h.year).slice(2), tm, b.G || '-', r3(Sim.AVG(b)), b.HR, b.RBI, b.SB, r3(Sim.OPS(b)), w];
+      });
+      const t = P ? f.pit : f.bat, tw2 = f1(tw ? (P ? f.warP : f.warB) : f.war);
+      const total = P ? (t.outs ? ['통산', '', t.G, t.W, t.L, t.SV, ip(t), f2(Sim.ERA(t)), t.K, tw2] : null)
+        : (t.PA ? ['통산', '', t.G, r3(Sim.AVG(t)), t.HR, t.RBI, t.SB, r3(Sim.OPS(t)), tw2] : null);
+      return { rows, total };
+    };
+    const { rows, total } = tableOf(isP);
+    const pt = tw ? tableOf(true) : null;
     const shown = me.shown || me.r;
     const mt = f.mainTeam || me.team;   // 52차: 가장 많이 뛴 팀·포지션
     return {
       name: me.name, num: me.num, avatar: me.avatar || 1, color: mt ? TEAMCOLOR(mt) : '#3d4a5c', team: f.mainTeamName || (me.team ? Sim.teamName(st, me.team) : ''),
       grade: v.grade, hof: f.hof && f.hof.in ? f.hof.year : null, ovr: Sim.disp(v.ovr), line: f.oneLine || '',
       info: `${f.mainPos ? mainPosText(f, me) : posText(me)} · ${handText(me)} · ${f.retireAge}세 은퇴 · 통산 WAR ${f1(f.war)}`,
-      stats: Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]), year: st.year - 1, isP, rows, total,
+      // 57차: 이도류는 앞면에 주 능력치/반대쪽 능력치를 한 줄에 함께 (막대 = 주, 세로선 = 반대쪽)
+      stats: tw ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
+        : Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]),
+      twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total,
       aw: (f.awList || []).slice(0, 12), teams: (f.teams || []).join(' → ').slice(0, 44),
+      ...(pt ? { rowsP: pt.rows, totalP: pt.total } : {}),
     };
   }
   function drawCard(d) {
-    const CW = 600, CH = 900, G = 40, W = CW * 2 + G * 3, H = CH + G * 2;
+    const three = Array.isArray(d.rowsP);   // 55차: 이도류는 앞면 + 타자 기록 + 투수 기록 3장
+    const CW = 600, CH = 900, G = 40, W = CW * (three ? 3 : 2) + G * (three ? 4 : 3), H = CH + G * 2;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const c = cv.getContext('2d');
     const color = d.color, isHof = d.hof != null;
@@ -1357,35 +1366,72 @@
     c.fillStyle = '#1b2233'; c.font = '900 50px sans-serif'; c.fillText(d.name, X + 44 + c.measureText(String(d.num)).width + 70, G + 510);
     c.font = '600 20px sans-serif'; c.fillStyle = '#4a5163';
     c.fillText(d.info, X + 44, G + 548);
-    d.stats.forEach(([label, val], i) => {
+    const pair = d.stats.length && d.stats[0].length >= 4;
+    if (pair) {
+      // 범례: 막대 = 주 능력, 세로선 = 반대쪽 능력
+      const main = d.twMain || '주', opp = main === '투구' ? '타격' : '투구';
+      c.textAlign = 'right'; c.font = '700 15px sans-serif'; c.fillStyle = '#858a96';
+      const lx = X + CW - 44; c.fillText(`막대 ${main} · 선 ${opp}`, lx, G + 584); c.textAlign = 'left';
+    }
+    d.stats.forEach(([label, val, label2, val2], i) => {
       const y = G + 600 + i * 42;
+      if (label2 != null) {
+        c.fillStyle = '#4a5163'; c.font = '700 18px sans-serif'; c.fillText(`${label}/${label2}`, X + 44, y + 15);
+        const bx = X + 196, bw = 250;
+        c.fillStyle = '#e6dfd0'; roundRect(c, bx, y, bw, 16, 8); c.fill();
+        c.fillStyle = val >= 80 ? '#c4352b' : '#1f3a68'; roundRect(c, bx, y, Math.max(16, bw * val / 100), 16, 8); c.fill();
+        const lxx = bx + Math.min(bw - 2, Math.max(2, bw * val2 / 100));
+        c.fillStyle = '#fbf7ee'; c.fillRect(lxx - 3.5, y - 7, 7, 30);
+        c.fillStyle = '#e0a526'; c.fillRect(lxx - 2, y - 6, 4, 28);
+        c.fillStyle = '#1b2233'; c.font = '900 20px sans-serif'; c.textAlign = 'right'; c.fillText(`${val}/${val2}`, X + CW - 44, y + 17); c.textAlign = 'left';
+        return;
+      }
       c.fillStyle = '#4a5163'; c.font = '700 20px sans-serif'; c.fillText(label, X + 44, y + 16);
       c.fillStyle = '#e6dfd0'; roundRect(c, X + 140, y, 340, 16, 8); c.fill();
       c.fillStyle = val >= 80 ? '#c4352b' : '#1f3a68'; roundRect(c, X + 140, y, Math.max(16, 340 * val / 100), 16, 8); c.fill();
       c.fillStyle = '#1b2233'; c.font = '900 22px sans-serif'; c.textAlign = 'right'; c.fillText(String(val), X + CW - 44, y + 17); c.textAlign = 'left';
     });
-    if (d.line) { c.fillStyle = '#4a5163'; c.font = 'italic 700 18px sans-serif'; c.fillText(`“${String(d.line).slice(0, 34)}”`, X + 44, G + CH - 64); }   // 52차: 한줄평
-    c.fillStyle = '#858a96'; c.font = '600 16px sans-serif'; c.fillText(`${d.year} FINAL · 골글 들고 명전으로`, X + 44, G + CH - 36);
-    // ---- 뒷면 ----
-    const BX = G * 2 + CW; frame(BX);
-    c.fillStyle = '#1b2233'; c.font = '900 30px sans-serif'; c.fillText(`${d.name}  #${d.num}`, BX + 40, G + 76);
-    c.font = '600 18px sans-serif'; c.fillStyle = '#4a5163'; c.fillText('연도별 기록 (1군)', BX + 40, G + 106);
-    c.fillStyle = '#1b2233'; c.fillRect(BX + 40, G + 118, CW - 80, 3);
-    const cols = d.isP ? ['연', '팀', 'G', 'W', 'L', 'SV', 'IP', 'ERA', 'K', 'WAR'] : ['연', '팀', 'G', 'AVG', 'HR', 'RBI', 'SB', 'OPS', 'WAR'];
-    const cx = d.isP ? [0, 44, 150, 196, 236, 276, 322, 386, 446, 500] : [0, 44, 160, 214, 278, 322, 372, 418, 494];
-    const line = (vals, y, bold) => { c.font = `${bold ? 800 : 600} 16px sans-serif`; vals.forEach((t, i) => c.fillText(String(t), BX + 44 + cx[i], y)); };
-    c.fillStyle = '#858a96'; line(cols, G + 150, true);
-    let y = G + 180;
-    c.fillStyle = '#1b2233';
-    for (const r of d.rows) { line(r, y); y += 22; }
-    if (!d.rows.length) { c.font = '600 18px sans-serif'; c.fillText('1군 기록 없음', BX + 44, y); y += 24; }
-    c.fillStyle = '#1b2233'; c.fillRect(BX + 40, y - 12, CW - 80, 2); y += 14;
-    if (d.total) line(d.total, y, true);
-    y += 40;
-    c.font = '800 17px sans-serif'; c.fillStyle = '#c4352b';
-    let ax = BX + 40;
-    for (const a of d.aw) { const w = c.measureText(a).width + 20; if (ax + w > BX + CW - 40) { ax = BX + 40; y += 36; } if (y > G + CH - 70) break; c.strokeStyle = '#c4352b'; c.lineWidth = 2; roundRect(c, ax, y - 22, w, 30, 7); c.stroke(); c.fillText(a, ax + 10, y); ax += w + 8; }
-    c.fillStyle = '#858a96'; c.font = '600 16px sans-serif'; c.fillText(d.teams, BX + 40, G + CH - 36);
+    // 55차: 맨 아래칸에 한줄평 (예전 'FINAL · 게임 이름' 자리). 길면 글자를 줄이고, 그래도 길면 두 줄로
+    if (d.line) {
+      const txt = `“${String(d.line)}”`, maxW = CW - 88;
+      c.fillStyle = '#4a5163';
+      let fs = 19; c.font = `italic 700 ${fs}px sans-serif`;
+      while (fs > 15 && c.measureText(txt).width > maxW) { fs--; c.font = `italic 700 ${fs}px sans-serif`; }
+      if (c.measureText(txt).width <= maxW) c.fillText(txt, X + 44, G + CH - 38);
+      else {
+        let cut = Math.ceil(txt.length / 2); const sp = txt.lastIndexOf(' ', cut); if (sp > 6) cut = sp;
+        c.fillText(txt.slice(0, cut).trim(), X + 44, G + CH - 60); c.fillText(txt.slice(cut).trim(), X + 44, G + CH - 36);
+      }
+    }
+    // ---- 뒷면 (이도류: 타자 기록, 투수 기록 두 장) ----
+    const back = (BX, isP, rows, total, title, withAw) => {
+      frame(BX);
+      c.textAlign = 'left';
+      c.fillStyle = '#1b2233'; c.font = '900 30px sans-serif'; c.fillText(`${d.name}  #${d.num}`, BX + 40, G + 76);
+      c.font = '600 18px sans-serif'; c.fillStyle = '#4a5163'; c.fillText(title, BX + 40, G + 106);
+      c.fillStyle = '#1b2233'; c.fillRect(BX + 40, G + 118, CW - 80, 3);
+      const cols = isP ? ['연', '팀', 'G', 'W', 'L', 'SV', 'IP', 'ERA', 'K', 'WAR'] : ['연', '팀', 'G', 'AVG', 'HR', 'RBI', 'SB', 'OPS', 'WAR'];
+      const cx = isP ? [0, 44, 150, 196, 236, 276, 322, 386, 446, 500] : [0, 44, 160, 214, 278, 322, 372, 418, 494];
+      const line = (vals, y, bold) => { c.font = `${bold ? 800 : 600} 16px sans-serif`; vals.forEach((t, i) => c.fillText(String(t), BX + 44 + cx[i], y)); };
+      c.fillStyle = '#858a96'; line(cols, G + 150, true);
+      let y = G + 180;
+      c.fillStyle = '#1b2233';
+      for (const r of rows || []) { line(r, y); y += 22; }
+      if (!rows || !rows.length) { c.font = '600 18px sans-serif'; c.fillText('1군 기록 없음', BX + 44, y); y += 24; }
+      c.fillStyle = '#1b2233'; c.fillRect(BX + 40, y - 12, CW - 80, 2); y += 14;
+      if (total) line(total, y, true);
+      y += 40;
+      if (withAw) {
+        c.font = '800 17px sans-serif'; c.fillStyle = '#c4352b';
+        let ax = BX + 40;
+        for (const a of d.aw || []) { const w = c.measureText(a).width + 20; if (ax + w > BX + CW - 40) { ax = BX + 40; y += 36; } if (y > G + CH - 70) break; c.strokeStyle = '#c4352b'; c.lineWidth = 2; roundRect(c, ax, y - 22, w, 30, 7); c.stroke(); c.fillText(a, ax + 10, y); ax += w + 8; }
+      }
+      c.fillStyle = '#858a96'; c.font = '600 16px sans-serif'; c.fillText(d.teams || '', BX + 40, G + CH - 36);
+    };
+    if (three) {
+      back(G * 2 + CW, false, d.rows, d.total, '타자 기록 (1군)', true);
+      back(G * 3 + CW * 2, true, d.rowsP, d.totalP, '투수 기록 (1군)', false);
+    } else back(G * 2 + CW, d.isP, d.rows, d.total, '연도별 기록 (1군)', true);
     return cv;
   }
   function cardImage(d) {

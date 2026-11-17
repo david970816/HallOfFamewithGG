@@ -10,7 +10,9 @@ const Sim = (function () {
   const BAL = {
     // 5.1 성장
     // 기획 초안 0.25/0.15/0.05 → 1차 패치: 18세에 이미 PA에 근접해 전원 슈퍼스타가 돼서 대폭 하향
-    ageCoef: [[19, 0.07], [22, 0.05], [27, 0.03], [31, 0.01], [99, 0]],
+    ageCoef: [[20, 0.07], [23, 0.05], [28, 0.03], [32, 0.01], [99, 0]],   // 55차: 시작 나이 16→17세에 맞춰 성장 구간을 1살씩 미룸
+    hardRetire: 50,
+    retireOffer: { drop: 6, gap: 3, war: 1.5 },   // 56차: 은퇴 권유 — 전성기 OVR 대비 하락폭, 팀 최약 선수와의 차이, 직전 시즌 WAR 기준   // 55차: 42세 강제 은퇴 폐지. 끝없이 이어지지 않게 50세에서만 끝낸다
     playCoef: { S: 1.0, B: 0.7, F: 0.5, I: 0.2 },        // 주전 / 백업 / 2군 / 부상
     growthRand: [0.7, 1.3],
     // 2차 패치("자주 대성하게"): 천장이 높은 선수일수록 더 빨리 큰다 → 상위 등급 전성기를 MVP급으로
@@ -67,7 +69,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     unprovenBias: 5,  // 38차: 10 → 5 (후보 타자가 늘어 경쟁이 세진 만큼 되돌림). 36차: 15 → 10 (타자 주전 도달이 투수보다 너무 어려웠음). 22차: 11→13, SP 4→6, 드래프트 기준선 45→46.5, 육성 테스트 기본 0.22→0.15, MVP 명성 0.4→0.2, MLB 벌점 9→7, NPB 4→3
     unprovenBiasSP: 3,   // 38차: 6 → 3. 16차: 선발 투수는 '증명 전' 감점을 작게 (선발 5명과 실제로 경쟁하게 된 뒤 너무 불리했음)
     // 9차: 훈련 방향 (선수 생성 때 두 능력치 선택). untilAge 미만 시즌까지 적용
-    trainFocus: { untilAge: 21, focus: 1.6, other: 0.85 },
+    trainFocus: { untilAge: 22, focus: 1.6, other: 0.85 },
     // 14차: 커리어 중 육성 방향(강점) 변경 — times번, 고른 두 능력치 잠재 +paUp, 기존 강점 둘 잠재 −paDown, 이후 seasons시즌 성장 가중
     focusChange: { times: 2, paUp: 5, paDown: 4, seasons: 3 },
     // 10차: 해외 진출 (KBO 1군 연차 svc 이상, 나이 maxAge 이하, 최근 가중 WAR war 이상, OVR 기준)
@@ -628,7 +630,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     ensureLeagues(st);
     const me = {
       name: setup.name || '홍길동', num: setup.num || 1, bats: setup.bats || 'R', throws: setup.throws || 'R', role: setup.role, pos: setup.pos,
-      age: 16, r: Object.assign({}, setup.r), school: setup.school || 'mid', hometown: setup.hometown || R.pick(DATA.teams).id, hsName: setup.school === 'strong' && setup.hsName ? setup.hsName : null,
+      age: 17, r: Object.assign({}, setup.r), school: setup.school || 'mid', hometown: setup.hometown || R.pick(DATA.teams).id, hsName: setup.hsName || null,
       avatar: setup.avatar || (seed % 9973),
       trainFocus: (setup.trainFocus || []).slice(0, 2), tfChanges: BAL.focusChange.times, tf2: null,
       stage: 'hs', grade: 1, team: null, lvl: 2, care: 0, trust: 50, pop: 0, dur: R.int(50, 85), bigInj: 0,
@@ -653,11 +655,12 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     me.shown = Object.assign({}, me.r);
     st.me = me;
     st.car = { bat: emptyBat(), pit: emptyPit(), ps: { bat: emptyBat(), pit: emptyPit() }, war: 0, warB: 0, warP: 0, aw: { MVP: 0, GG: 0, KSMVP: 0, TITLE: 0, ROY: 0, KS: 0, POY: 0 }, awList: [], ms: [], twoWaySeasons: 0, peak: myOVR(me), achPts: 0 };
-    story(st, `${me.age}세, ${schoolName(me.school)} 야구부 1학년. 벤치 끝자리에서 인생이 시작됐다.`);
+    story(st, `${me.age}세, ${me.hsName || schoolName(me.school)} 야구부 1학년. 벤치 끝자리에서 인생이 시작됐다.`);
     return st;
   }
   function schoolName(s) { return { strong: '전국구 강호', mid: '중위권 고교', weak: '약체 고교' }[s]; }
-  function story(st, text) { st.story.push({ year: st.year, age: st.me.age, text }); }
+  // 56차: inSeason — 시즌 중(예: 9월 신인 드래프트)에 있었던 일은 그 시즌의 연도·나이로 남긴다
+  function story(st, text, inSeason) { st.story.push({ year: inSeason ? st.year - 1 : st.year, age: inSeason ? st.me.age - 1 : st.me.age, text }); }
 
   // ================================================================
   // 시즌 진행
@@ -785,7 +788,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       tres.push(`${n} ${ROUND[w]}`); tScore += [0, 10, 25, 45, 70, 100][w]; if (w === 5) won++;
     });
     tScore /= 3;
-    res.team = { name: schoolName(me.school), record: `주말리그 ${lw}승 ${10 - lw}패`, tourn: tres };
+    res.team = { name: me.hsName || schoolName(me.school), record: `주말리그 ${lw}승 ${10 - lw}패`, tourn: tres };
     // 수상
     if (won && status === 'S' && perf >= 60 && R.chance(0.5)) res.awards.push('대회 MVP');
     if (status === 'S' && perf >= 90) res.awards.push(me.role === 'P' ? '대회 우수투수상' : '대회 타격상');
@@ -820,7 +823,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     else tool = Math.max(me.r.pow, me.r.spd, me.r.arm, me.r.def + ((DEFMUL[me.pos] || 0) >= 1.1 ? 4 : 0));   // 14차: 수비도 툴로 본다
     const paAvg = avgKeys(me.pa, mainKeys(me)) + sc.err;
     let s = w.ovr * myOVR(me) + w.perf * perf + w.tourn * tourn + w.tool * tool + w.pa * paAvg;
-    if (me.stage === 'hs') s += BAL.schoolExpo[me.school] + (sc.youth ? 5 : 0) + (me.hsName ? BAL.eliteScout : 0);   // 52차: 지역 명문고 스카우트 보너스
+    if (me.stage === 'hs') s += BAL.schoolExpo[me.school] + (sc.youth ? 5 : 0) + (me.hsName && me.school === 'strong' ? BAL.eliteScout : 0);   // 52차: 지역 명문고 스카우트 보너스
     if (me.stage === 'univ') s += BAL.univScout;
     s += sc.bonus || 0;
     return Math.max(s, ovrFloor(me));
@@ -1174,7 +1177,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         if (last.pit && last.pit.outs >= 45 && ERA(last.pit) <= 2.50) good = true;
       }
       // 13차: 해외(특히 미국)는 승격 문턱이 더 높다
-      const young = me.lvPen && me.age < 21;
+      const young = me.lvPen && me.age < 22;
       const bar = me.lvPen ? me.lvPen + 2 + (young ? 6 : 0) : 0;
       if (myO >= low + bar || (good && !young) || R.chance(me.lvPen ? 0.02 : 0.06)) lvl = 1;
     } else {
@@ -1518,7 +1521,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     res.news = fanNews(st, res);
     peakScene(st, res, myWAR, segs1);
     // 히스토리
-    st.hist.push({ year: st.year, age: me.age, team: team.name, teamId: team.id, lg: cfgOf(st.lg).id, pos: me.twoWay ? 'TW' : me.pos, lvl: segs1 >= 1 ? '1군' : '2군', def: m.def || null, futBat: b2.PA ? b2 : null, futPit: p2.outs ? p2 : null, psBat: post.me && post.me.bat || null, psPit: post.me && post.me.pit || null, bat: b1.PA ? b1 : (b2.PA ? Object.assign({ fut: true }, b2) : null), pit: p1.outs ? p1 : (p2.outs ? Object.assign({ fut: true }, p2) : null), war: myWAR, note: res.awards.join(', ') });
+    st.hist.push({ year: st.year, age: me.age, team: team.name, teamId: team.id, lg: cfgOf(st.lg).id, pos: me.twoWay ? 'TW' : me.pos, lvl: segs1 >= 1 ? '1군' : '2군', def: m.def || null, futBat: b2.PA ? b2 : null, futPit: p2.outs ? p2 : null, psBat: post.me && post.me.bat || null, psPit: post.me && post.me.pit || null, bat: b1.PA ? b1 : (b2.PA ? Object.assign({ fut: true }, b2) : null), pit: p1.outs ? p1 : (p2.outs ? Object.assign({ fut: true }, p2) : null), war: myWAR, warB: me.twoWay ? m.warB : undefined, warP: me.twoWay ? m.warP : undefined, note: res.awards.join(', ') });
     me.lastSeason = { war: myWAR, warB: m.warB, warP: m.warP, avg: b1.PA >= 100 ? AVG(b1) : null, ops: b1.PA >= 100 ? OPS(b1) : null, era: p1.outs >= 90 ? ERA(p1) : null, starter: segsS >= 2 || (me.role === 'P' && m.pacc.su >= 2), firstSegs: segs1, injured: !!m.injText, bigInjury: m.segs.filter(s => s === 'I').length >= 2, cl: m.pacc.cl, su: m.pacc.su, gs: p1.GS || 0 };
     // 25차: 시즌 대부분을 마무리로 뛰었다면 이미 마무리 투수로 본다 (결산에서 "마무리 맡아라" 제안이 뒤늦게 나오던 문제)
     if (me.role === 'P' && !me.twoWay && me.pos === 'RP' && m.pacc.cl >= 2 && !me.flags.closer) me.flags.closer = true;
@@ -1731,7 +1734,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const me = st.me, age = me.age;
     let ageC = 0;
     for (const [a, c] of BAL.ageCoef) if (age <= a) { ageC = c; break; }
-    const typeC = (me.growth === 'early' ? (age < 20 ? 1.4 : 0.7) : me.growth === 'late' ? (age < 24 ? 0.7 : 1.4) : 1) * (BAL.tierGrowth[me.tier] || 1);
+    const typeC = (me.growth === 'early' ? (age < 21 ? 1.4 : 0.7) : me.growth === 'late' ? (age < 25 ? 0.7 : 1.4) : 1) * (BAL.tierGrowth[me.tier] || 1);
     const sets = me.twoWay
       ? [[mainKeys(me), me.twMult.main], [oppKeys(me), me.twMult.opp]]
       : [[mainKeys(me), me.focus || 1], [oppKeys(me), me.stage === 'hs' ? BAL.oppGrowthHS : 0]];
@@ -1793,13 +1796,16 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // 강제 이벤트
     if (me.flags.tjPending) { delete me.flags.tjPending; queue(st, 'tj'); }
     // 은퇴·방출
-    if (me.age >= 42) { retire(st, '42세, 더 이상 몸이 따라주지 않았다. 유니폼을 벗는다.'); return; }
+    if (me.age >= BAL.hardRetire) { retire(st, `${me.age}세, 더 이상 몸이 따라주지 않았다. 유니폼을 벗는다.`); return; }
     const team = teamById(st, me.team);
     const low = groupLowest(st, team, GROUP[me.pos]);
     const mo = myVal(me) - (me.lvPen || 0);
     const ls = me.lastSeason || {};
     let leaving = false;
-    if ((me.age >= 33 && (mo < low || (!ls.starter && ls.war < WS(1)))) || (me.age >= 35 && ls.war < WS(1.5))) { queue(st, 'retireOffer'); leaving = true; }
+    // 56차: 은퇴 권유는 나이가 아니라 능력·성적으로 — 전성기에서 내려온 선수(OVR RO.drop 이상 하락)가
+    //   팀 같은 포지션에서 가장 약한 선수보다 못하거나, 그 선수와 차이가 RO.gap 이내인데 직전 시즌 WAR가 RO.war 미만이면
+    const RO = BAL.retireOffer, fell = (st.car.peak || 0) - myOVR(me) >= RO.drop;
+    if (fell && (mo < low || (mo < low + RO.gap && ls.war < WS(RO.war)))) { queue(st, 'retireOffer'); leaving = true; }
     else if (me.noFirst >= BAL.releaseNoFirst) { queue(st, 'released'); leaving = true; }
     // 10차: 해외 진출 (KBO에서 연차·성적·능력이 되면 포스팅/FA로 제안)
     const A = BAL.abroad;
@@ -2391,7 +2397,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
           else me.trust += 5;
           me.bonus = bonus; me.draft = { year: st.year, round: c.round, pick: c.pick, team: c.team };
           joinTeam(st, c.team, 'draft');
-          story(st, `${st.year} 드래프트 ${c.round}라운드 ${c.inRound}순위로 ${teamName(st, c.team)} 입단. 계약금 ${man(bonus)}.`);
+          story(st, `${st.year} 드래프트 ${c.round}라운드 ${c.inRound}순위로 ${teamName(st, c.team)} 지명. 계약금 ${man(bonus)}.`, true);
           queue(st, 'camp'); queue(st, 'number');
           return txt;
         }
@@ -2552,7 +2558,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       // 13차: 고교 졸업 때 미국 직행 (잠재력·스카우트 평가 + 능력치 기준)
       id: 'usDirect', forced: true, cat: '입단', who: '메이저리그 스카우트',
       prep: (st, me, c) => { c.team = R.pick(st.L.MLB.teams).id; c.bonus = Math.round(R.range(8000, 30000) * (me.tier === '역대급' ? 1.6 : 1) / 100) * 100; },
-      text: (st, me, c) => `드래프트를 앞둔 겨울, ${teamName(st, c.team)} 스카우트가 찾아왔다. "마이너리그부터 시작하자. 계약금 ${man(c.bonus)}." (실패해서 돌아오면 KBO 복귀가 쉽지 않다)`,
+      text: (st, me, c) => `드래프트를 앞둔 여름,${teamName(st, c.team)} 스카우트가 찾아왔다. "마이너리그부터 시작하자. 계약금 ${man(c.bonus)}." (실패해서 돌아오면 KBO 복귀가 쉽지 않다)`,
       ch: ['미국으로 간다 (마이너리그 계약)', 'KBO 드래프트에 나간다'], safe: 1,
       res: (st, me, i, c) => {
         if (i !== 0) return '"한국에서 먼저 증명하겠습니다."';
@@ -2583,8 +2589,12 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     {
       id: 'retireOffer', forced: true, cat: '커리어', who: '단장',
       text: (st, me) => `"${me.name} 선수, 그동안 정말 고생 많았어요. 코치 자리를 준비해 뒀습니다."`,
-      ch: (st, me) => me.abroad ? ['은퇴한다', 'KBO로 돌아가 현역을 이어간다'] : ['은퇴한다', '방출을 요청하고 현역을 이어간다'], safe: 0,
+      // 55차: 계약이 남아 있으면 '계약 기간을 채운다' 선택지
+      ch: (st, me) => retireOpts(st, me).map(o => ({ retire: '은퇴한다', stay: `계약 기간(${me.contract && me.contract.until}년까지)을 채운다`, kbo: 'KBO로 돌아가 현역을 이어간다', release: '방출을 요청하고 현역을 이어간다' }[o])), safe: 0,
       res: (st, me, i) => {
+        const o = retireOpts(st, me)[i];
+        if (o === 'stay') { story(st, `${me.age}세, 은퇴 권유를 거절했다. 남은 계약 기간을 채우기로 했다.`); return '"계약은 끝까지 지키겠습니다."'; }
+        i = o === 'retire' ? 0 : 1;
         if (i === 0) { retire(st, `${me.age}세, 은퇴. 마지막 ${me.role === 'P' ? '마운드' : '타석'}에서 관중이 기립했다.`); return '은퇴 기자회견에서 목이 메었다.'; }
         if (me.abroad) { const t = kboReturnTeam(st); returnKBO(st, t, BAL.minSal * 2, 1); return `${tj(st, t, '이', '가')} 고향 무대로 불러줬다.`; }
         const t = pickBetterTeam(st, me.team);
@@ -2781,6 +2791,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   // 공개 API
   // ================================================================
   function pendingItem(st) { return st.pending[0] || null; }
+  function retireOpts(st, me) { const left = me.contract && me.contract.until >= st.year; return ['retire', left ? 'stay' : null, me.abroad ? 'kbo' : 'release'].filter(Boolean); }
   function voluntaryRetire(st) { bind(st); retire(st, st.me.stage === 'pro' ? `${st.me.age}세, 스스로 은퇴를 선언했다. 박수칠 때 떠난다.` : `${st.me.age}세, 스스로 야구를 내려놓았다.`); }
 
   // 표시용
