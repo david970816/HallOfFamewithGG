@@ -335,7 +335,7 @@
       else sub = '온라인 연결 실패 · 이 기기 기록';
     }
     return rankPanel(all, { title: '역대 최고점수 TOP 20', sub, max: ALL_MAX, podium: true, empty: '아직 기록이 없다. 시상대 맨 위에 서 보자.', foot: '이름을 누르면 야구카드를 볼 수 있다.' })
-      + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: false, note: `3일마다 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
+      + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: true, /* 53차: 시즌 순위도 1~3위 시상대 */ note: `3일마다 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
   }
   function drawPodium() {
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
