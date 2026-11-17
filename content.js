@@ -2,7 +2,7 @@
 // 글만 바꾸면 화면에 그대로 반영된다. 날짜는 'YYYY-MM-DD'.
 window.GAME_CONTENT = {
   // 홈 오른쪽 위 인스타 아이콘이 여는 주소
-  instagram: 'https://www.instagram.com/dirnrpdlaaksemfrhdlttmqslek/',
+  instagram: 'https://www.instagram.com/hall_of_fame_with_gg/',
 
   // 온라인 TOP 50 (Supabase). 비워 두면 이 기기 기록만 쓴다.
   // url: 프로젝트 주소 (https://xxxx.supabase.co), key: anon public 키 (공개용 키라 코드에 있어도 된다. service_role 키는 절대 넣지 말 것)
