@@ -248,8 +248,8 @@
       <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
-  // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (시즌 = 한국 시간 기준 3일, 끝나면 새 시즌)
-  const ALL_MAX = 20, SEASON_MAX = 50, SEASON_MS = 3 * 86400000, KST = 9 * 3600000;
+  // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (61차: 시즌 = 한국 시간 하루, 매일 밤 12시에 새 시즌)
+  const ALL_MAX = 20, SEASON_MAX = 50, SEASON_MS = 86400000, KST = 9 * 3600000;
   function seasonInfo(now) {
     now = now || Date.now();
     const idx = Math.floor((now + KST) / SEASON_MS), start = idx * SEASON_MS - KST;
@@ -320,7 +320,7 @@
       ${rest ? `<div class="rank-list">${rest}</div>` : ''}
       ${o.foot ? `<div class="tiny muted" style="margin-top:6px">${esc(o.foot)}</div>` : ''}</div>`;
   }
-  // 이 기기 기록에서 이번 시즌(3일) 기록만
+  // 이 기기 기록에서 이번 시즌(오늘) 기록만
   const inSeason = r => (r.date || 0) >= seasonInfo().start;
   // 홈 순위표 2개: 역대 TOP 20(시상대) + 이번 시즌 TOP 50 (온라인이면 전체 플레이어, 아니면 이 기기 기록)
   function homeBoard(recs) {
@@ -333,7 +333,7 @@
       else sub = '온라인 연결 실패 · 이 기기 기록';
     }
     return rankPanel(all, { title: '역대 최고점수 TOP 20', sub, max: ALL_MAX, podium: true, empty: '아직 기록이 없다. 시상대 맨 위에 서 보자.', foot: '이름을 누르면 야구카드를 볼 수 있다.' })
-      + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: true, /* 53차: 시즌 순위도 1~3위 시상대 */ note: `3일마다 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
+      + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: true, /* 53차: 시즌 순위도 1~3위 시상대 */ note: `매일 밤 12시(한국 시간) 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
   }
   function drawPodium() {
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
@@ -1240,7 +1240,7 @@
     const recs = store.get(KEY_REC, []);
     const f = st.final;
     // 40차: 점수만 비교해 순위표에 들면 야구카드만 남기고, 못 들면 아무것도 남기지 않는다
-    // 52차: 역대 TOP 20 + 이번 시즌(3일) TOP 50 — 둘 중 하나라도 들면 남긴다
+    // 52차: 역대 TOP 20 + 이번 시즌(오늘) TOP 50 — 둘 중 하나라도 들면 남긴다
     const byScore = (a, b) => b.score - a.score;
     const mine = { name: f.name, pos: f.mainPos && f.mainPos !== 'TW' ? f.mainPos : f.pos, twoWay: f.twoWay, score: f.score, war: f.war, hof: !!(f.hof && f.hof.in), date: Date.now(), card: cardData(st) };
     const all = recs.concat([mine]).sort(byScore);
