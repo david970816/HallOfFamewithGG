@@ -219,7 +219,7 @@
   }
   const LOCALHOST = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !window.__countLocal;   // __countLocal: 테스트 페이지용
   const STAT_POS = ['C', '1B', '2B', '3B', 'SS', 'OF', 'SP', 'RP', 'CL'];
-  const statOK = () => LB_ON && !App.admin && !LOCALHOST && !/[?&]admin=/.test(location.search);
+  const statOK = () => LB_ON && !LOCALHOST;
   function bump(k) {
     if (!statOK()) return;
     lbFetch('rpc/bump', { method: 'POST', body: JSON.stringify({ k }) }).catch(() => { });
@@ -258,7 +258,7 @@
         <div class="funnel tiny"><span class="muted">도달</span>${M.map(([k, t]) => { const n = f('m_' + k); return `<span>${t} <b class="num">${n.toLocaleString()}</b>${made ? `<i class="muted">${Math.round(n * 100 / made)}%</i>` : ''}</span>`; }).join('')}</div></div>`;
     };
     return box(`${block('누적', tot, S.scT)}${block(`오늘 <span class="tiny muted">${today.slice(5).replace('-', '/')} · 한국 시간 0시에 초기화</span>`, day, (S.scD || []).filter(r => r.day === today))}
-      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 칸마다 생성 수 · 비율 · 은퇴한 선수의 평균 점수(처음 고른 포지션 기준) · 도달 % = 포지션별 생성 합계 대비 그 단계까지 간 선수 · 포지션·평균·도달은 업데이트 이후 만든 선수만 센다 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
+      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 칸마다 생성 수 · 비율 · 은퇴한 선수의 평균 점수(처음 고른 포지션 기준) · 도달 % = 포지션별 생성 합계 대비 그 단계까지 간 선수 · 포지션·평균·도달은 업데이트 이후 만든 선수만 센다 · 관리자 플레이도 센다 · 1분마다 새로 받음</div>`);
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
   // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (61차: 시즌 = 한국 시간 하루, 매일 밤 12시에 새 시즌)
@@ -1258,6 +1258,7 @@
       draft: me.draft ? String(me.draft.round) : '없음', origin: me.origin || 'hs',
       kbo: seasonsIn('KBO'), npb: seasonsIn('NPB'), mlb: seasonsIn('MLB'), debut: me.debut != null, vol: !!me.volRet,
       minutes: fl.t0 ? Math.round((Date.now() - fl.t0) / 60000) : null, aw: Object.fromEntries(Object.entries(f.aw || {}).filter(([, n]) => n > 0)),
+      admin: !!(App.admin || /[?&]admin=/.test(location.search)),
     };
   }
   function recordRetire() {
@@ -1279,7 +1280,7 @@
     bump('retire');
     if (mine.hof) bump('hof');
     { const p0 = [st.me.flags && st.me.flags.pos0, f.mainPos, st.me.pos].find(p => STAT_POS.indexOf(p) >= 0); if (p0 && statOK()) lbFetch('rpc/add_score', { method: 'POST', body: JSON.stringify({ p: p0, s: f.score }) }).catch(() => { }); }
-    if (statOK()) lbFetch('rpc/add_career', { method: 'POST', body: JSON.stringify({ d: careerRow(st) }) }).catch(() => { });
+    if (LB_ON && !LOCALHOST) lbFetch('rpc/add_career',{ method: 'POST', body: JSON.stringify({ d: careerRow(st) }) }).catch(() => { });
     if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
     save();   // 39차: 커리어 저장 데이터는 지운다 (화면의 은퇴 결산은 메모리에 남아 있음)
