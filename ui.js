@@ -1336,9 +1336,31 @@
       stats: tw ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
         : Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]),
       twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total,
-      aw: (f.awList || []).slice(0, 12), teams: (f.teams || []).join(' → ').slice(0, 44),
+      aw: mergeAw(f.awList || []).slice(0, 12), teams: (f.teams || []).join(' → ').slice(0, 44),
       ...(pt ? { rowsP: pt.rows, totalP: pt.total } : {}),
     };
+  }
+  // 60차: 같은 업적은 연도를 모아 한 칸으로 — '2029 MVP', '2031 MVP' → '2029, 2031 MVP' (연속 연도는 2029~2031)
+  //   이미 합쳐진 문자열은 '2029, ' 로 시작해 다시 건드리지 않는다 (예전 카드도 그대로 안전)
+  function mergeAw(list) {
+    const order = [], by = {};
+    for (const a of list) {
+      const m = /^(\d{4}) (.+)$/.exec(a);
+      const key = m ? m[2] : '\u0000' + a;
+      if (!by[key]) { by[key] = []; order.push(key); }
+      if (m) by[key].push(+m[1]);
+    }
+    return order.map(k => {
+      if (k[0] === '\u0000') return k.slice(1);
+      const all = by[k], ys = [...new Set(all)].sort((a, b) => a - b), parts = [];
+      for (let i = 0; i < ys.length;) {
+        let j = i; while (j + 1 < ys.length && ys[j + 1] === ys[j] + 1) j++;
+        parts.push(j - i >= 2 ? `${ys[i]}~${ys[j]}` : ys.slice(i, j + 1).join(', '));
+        i = j + 1;
+      }
+      // 이도류가 한 해에 골든글러브 2개처럼 같은 해에 겹치면 총 횟수를 붙인다
+      return `${parts.join(', ')} ${k}${all.length > ys.length ? ` (${all.length}회)` : ''}`;
+    });
   }
   function drawCard(d) {
     const three = Array.isArray(d.rowsP);   // 55차: 이도류는 앞면 + 타자 기록 + 투수 기록 3장
@@ -1425,7 +1447,9 @@
       if (withAw) {
         c.font = '800 17px sans-serif'; c.fillStyle = '#c4352b';
         let ax = BX + 40;
-        for (const a of d.aw || []) { const w = c.measureText(a).width + 20; if (ax + w > BX + CW - 40) { ax = BX + 40; y += 36; } if (y > G + CH - 70) break; c.strokeStyle = '#c4352b'; c.lineWidth = 2; roundRect(c, ax, y - 22, w, 30, 7); c.stroke(); c.fillText(a, ax + 10, y); ax += w + 8; }
+        for (let a of mergeAw(d.aw || [])) {
+          if (c.measureText(a).width + 20 > CW - 80) a = a.replace(/\b(19|20)(\d\d)\b/g, "'$2");   // 너무 길면 '29~'31 처럼 줄여 쓴다
+          const w = c.measureText(a).width + 20; if (ax + w > BX + CW - 40) { ax = BX + 40; y += 36; } if (y > G + CH - 70) break; c.strokeStyle = '#c4352b'; c.lineWidth = 2; roundRect(c, ax, y - 22, w, 30, 7); c.stroke(); c.fillText(a, ax + 10, y); ax += w + 8; }
       }
       c.fillStyle = '#858a96'; c.font = '600 16px sans-serif'; c.fillText(d.teams || '', BX + 40, G + CH - 36);
     };

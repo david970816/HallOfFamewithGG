@@ -32,13 +32,14 @@ const Sim = (function () {
     warScale: 0.73,
     // 이도류: 성장 배율, 반대쪽 잠재력 감소폭, 성공 기준 WAR
     // 6차: 제안은 드물게(반대쪽 평균 45→48 이상, 해마다 확률), 고르면 잘 크게(성장 0.9→1.0, 반대쪽 잠재력 감소 0~18→0~10)
-    twoWay: { offerMin: 48, offerP: 0.8, offerTiers: ['역대급', '특급'], main: 1.0, opp: 1.05, oppGap: [0, 8], oppGapLegend: [0, 0], okWAR: 2.0, batIP: 0.9, spSta: 45, batGS: 0.45 },   // 7차: 타자 출신 이도류 선발 겸업 (체력 45+, 선발 등판 ×0.45 ≈ 13경기)   // okWAR: 타자·투수 각각 (5차: 투수 눈금 보정 + 전성기 창으로 기획서 원안 2.0 복귀)   // batIP: 타자 출신 이도류의 불펜 이닝 배율 (1차 0.6)
+    twoWay: { offerMin: 48, offerP: 0.4, offerTiers: ['역대급', '특급'], main: 1.0, opp: 1.05, oppGap: [0, 8], oppGapLegend: [0, 0], okWAR: 2.0, quitGap: 8, quitWAR: 0.5, batIP: 0.9, spSta: 45, batGS: 0.45 },   // 7차: 타자 출신 이도류 선발 겸업 (체력 45+, 선발 등판 ×0.45 ≈ 13경기)   // okWAR: 타자·투수 각각 (5차: 투수 눈금 보정 + 전성기 창으로 기획서 원안 2.0 복귀)   // batIP: 타자 출신 이도류의 불펜 이닝 배율 (1차 0.6)
     oppGrowthHS: 0.3,                                     // 이도류 아닐 때 반대쪽 능력치 고교 성장 배율
     // 기획 초안 95~99/85~94/70~84/55~69 → 1차 패치: 확률은 유지하고 범위만 낮춤 (유망 = 평균적인 주전)
     paTier: [ // [이름, 확률, 평균PA 최소, 최대]
       // 17차: 유망 잠재력 58~75 → 60~79
       // 19차: 등급 비율 → 15/30/50/5
-      ['역대급', 0.15, 90, 99], ['특급', 0.30, 76, 89], ['유망', 0.50, 60, 79], ['평범', 0.05, 45, 57]],
+      // 60차: 등급 비율 → 8/24/58/10
+      ['역대급', 0.08, 90, 99], ['특급', 0.24, 76, 89], ['유망', 0.58, 60, 79], ['평범', 0.10, 45, 57]],
     paSpread: 8,
     // 4차 패치: iron 36→35, long 34→33, 하락 가속 추가 (통산 WAR 상위권이 41세에도 5~8 WAR를 찍던 문제)
     aging: { iron: [35, 1, 2], long: [33, 1, 3], std: [32, 2, 4], early: [30, 3, 5] },
@@ -898,7 +899,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         const lu = teamLineup(st, t, seg, t === myTeam ? meE : null);
         for (const s of lu.starters) { const pa = SLOTPA[s.order] / 3; if (s.me) { mine.segRole.bat = { kind: 'S', order: s.order, slot: s.slot }; continue; } s.p.acc.PA += pa; s.p.acc.rbiW += pa * RBIM[s.order]; s.p.acc.rW += pa * RUNM[s.order]; }
         lu.bench.forEach((b, bi) => { if (b.me) { mine.segRole.bat = { kind: 'B' }; return; } const pa = bi < BAL.benchTopN ? 62 : BAL.benchLowPA; b.p.acc.PA += pa; b.p.acc.rbiW += pa * 0.9; b.p.acc.rW += pa * 0.95; });
-        for (const s of lu.sp) { if (s.me) { mine.segRole.pit = { kind: 'SP' }; continue; } const pr = pitRates(s.p.r); const gs = 29.5 / 3; s.p.acc.GS += gs; s.p.acc.outs += gs * pr.ipS * 3 * (1 + R.tri() * 0.06); }
+        for (const s of lu.sp) { if (s.me) { mine.segRole.pit = { kind: 'SP' }; continue; } const pr = pitRates(s.p.r); const gs = spGS(GF) / 3; s.p.acc.GS += gs; s.p.acc.outs += gs * pr.ipS * 3 * (1 + R.tri() * 0.06); }
         for (const r of lu.rp) { if (r.me) { mine.segRole.pit = { kind: r.role }; continue; } const ip = r.role === 'MR' || r.role === 'LR' ? 17 : 20; r.p.acc.outs += ip * 3; r.p.acc.rel += Math.round(ip * 1.05); if (r.role === 'CL') r.p.acc.cl++; if (r.role === 'SU') r.p.acc.su++; }
       }
       if (pro) meSegPlay(st, mine, seg, myTeam);
@@ -1016,7 +1017,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         p.season = { bat: s }; lines.push(p);
       });
       sps.forEach((p, i) => {
-        const pr = pitRates(p.r, bonus), gs = (i < 5 ? 28.5 : 6) * gf;
+        const pr = pitRates(p.r, bonus), gs = i < 5 ? spGS(gf) * 0.97 : 6 * gf;
         const s = pitExp(pr, gs * pr.ipS * 3, frm()); s.GS = Math.round(gs); s.G = s.GS;
         p.acc = { GS: gs, cl: 0, su: 0, rel: 0 }; p.season = { pit: s }; lines.push(p);
       });
@@ -1093,13 +1094,21 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     }
   }
 
+  // 60차: 풀타임 선발 한 시즌 등판 수 — KBO 약 30~31, MLB 약 33 (예전 29.4라 28경기가 흔했다)
+  function spGS(gf) { return 30.6 * Math.pow(gf, 0.7); }
+
   function pitDecisions(s, acc, wp, wins, lgERA) {
     const era = Math.max(0.5, ERA(s));
     if (s.GS > 0) {
-      s.W = Math.max(0, Math.round(s.GS * wp * Math.pow(lgERA / era, 0.8) * 0.65 + R.tri() * 2));
-      s.L = Math.max(0, Math.round(s.GS * (1 - wp) * Math.pow(era / lgERA, 0.8) * 0.65 + R.tri() * 2));
+      // 60차: 선발 승패 = 등판 수 × 승패가 갈리는 비율(이닝이 길수록↑) × 승리 몫(팀 승률·평균자책)
+      //   예전 식은 평균자책이 아주 낮으면 배수가 끝없이 커져 28경기 36승 같은 기록이 나왔다. 이제 승+패 ≤ 선발 등판.
+      const ipg = IP(s) / s.GS, q = Math.pow(lgERA / era, 0.9);
+      const share = clamp(wp * q / (wp * q + (1 - wp) / q), 0.12, 0.9), dec = clamp(0.58 + (ipg - 5.5) * 0.1, 0.45, 0.85);
+      const gs = Math.round(s.GS), nd = gs * dec;
+      s.W = clamp(Math.round(nd * share + R.tri() * 1.5), 0, gs);
+      s.L = clamp(Math.round(nd * (1 - share) + R.tri() * 1.5), 0, gs - s.W);
       // 완투·완봉: 경기당 이닝이 길고 평균자책이 낮을수록
-      const ipg = IP(s) / s.GS, cgP = clamp((ipg - 5.7) * 0.04, 0, 0.12), shoP = clamp(0.3 * lgERA / era, 0.05, 0.6);
+      const cgP = clamp((ipg - 5.7) * 0.04, 0, 0.12), shoP = clamp(0.3 * lgERA / era, 0.05, 0.6);
       s.CG = 0; s.SHO = 0;
       for (let i = 0; i < Math.round(s.GS); i++) if (R() < cgP) { s.CG++; if (R() < shoP) s.SHO++; }
     } else { s.W = 0; s.L = 0; }
@@ -1254,7 +1263,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       const rs = 1 + (p.men - 1) * 0.4;
       let s;
       if (pr.kind === 'SP') {
-        const gs = Math.round(9.8 * GF * frac * (me.twoWay && me.role === 'P' ? 0.8 : me.twoWay ? BAL.twoWay.batGS : 1) * R.range(0.9, 1.1));
+        const gs = Math.round(spGS(GF) / 3 * frac * (me.twoWay && me.role === 'P' ? 0.8 : me.twoWay ? BAL.twoWay.batGS : 1) * R.range(0.95, 1.05));
         s = simPitch(p, Math.round(gs * p.ipS * 3 * R.range(0.92, 1.08)), rs); s.GS = gs; s.G = gs;
         if (me.role === 'P') starterSeg = true;
       } else {
@@ -1819,6 +1828,14 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const abroadOK = false;
     // 밸런스 봇용: 봇은 버튼을 못 누르므로 자격이 되면 가끔 포스팅을 신청한 것으로 친다
     if (OPT.botPost && !leaving && canPost(st) && R.chance(0.3)) { me.flags.postYear = st.year; queue(st, 'posting'); }
+    // 60차: 이도류 투타 균형이 무너지면(능력 차 BAL.twoWay.quitGap 이상, 또는 한쪽만 잘하고 다른 쪽은 부진) 그만둘지 묻는다 — 2년 간격
+    if (!leaving && me.twoWay && team && (me.flags.twAskYear || 0) <= st.year - 2) {
+      const TW = BAL.twoWay, bV = me.role === 'B' ? myVal(me) : myOppVal(me), pV = me.role === 'P' ? myVal(me) : myOppVal(me);
+      const wb = ls.warB, wp = ls.warP, hasW = wb != null && wp != null;
+      const weak = Math.abs(bV - pV) >= TW.quitGap ? (bV < pV ? 'bat' : 'pit')
+        : hasW && wp >= TW.okWAR && wb < TW.quitWAR ? 'bat' : hasW && wb >= TW.okWAR && wp < TW.quitWAR ? 'pit' : null;
+      if (weak) { me.flags.twAskYear = st.year; queue(st, 'twQuit', { weak }); }
+    }
     // 11차: 투수 보직 전환 제안 (불펜→선발, 선발→불펜, 불펜→마무리)
     // 15차: 보직 전환 제안은 커리어 통틀어 1~2번(랜덤), 최소 3년 간격
     // 43차: 선발↔불펜 제안은 2~3번·2년 간격, 마무리 제안은 따로 센다(횟수 제한 없음, 2년 간격). 조건도 완화 (BAL.roleOffer)
@@ -2732,6 +2749,32 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       res: (st, me, i) => { if (i === 0) { me.pos = 'C'; me.flags.catcher = true; me.care -= 1; story(st, `${me.age}세, 포수 마스크를 썼다.`); return '무릎 보호대가 아직 어색하다.'; } me.trust -= 5; return '2군에서 조금 더 버텨야 한다.'; } },
     { id: 'toOF', cat: '포지션', who: '감독', cond: (st, me) => me.stage === 'pro' && me.role === 'B' && GROUP[me.pos] === 'IF' && me.age >= 28, text: '"내야 수비 범위가 예전 같지 않다. 코너 외야로 가자."', ch: ['수락한다', '내야를 고집한다'], safe: 0,
       res: (st, me, i) => { if (i === 0) { me.pos = 'OF'; me.flags.cornerOF = true; return '외야 잔디 냄새가 낯설다.'; } if (me.r.def < 50) me.trust -= 5; return '"실책 나오면 바로 바꾼다."'; } },
+    // 60차: 투타 균형이 무너졌을 때 이도류를 그만둘지 — 잘하는 쪽에 집중하거나(주 포지션과 반대쪽이면 전향), 못하는 쪽에 집중하거나, 계속하거나
+    {
+      id: 'twQuit', forced: true, cat: '포지션', who: '감독',
+      text: (st, me, c) => c.weak === 'bat'
+        ? '"요즘 타석에서는 영 답이 안 나온다. 마운드에서는 이렇게 좋은데. 이도류, 계속할 거냐?"'
+        : '"방망이는 리그 정상급인데 마운드가 버겁다. 이도류, 계속할 거냐?"',
+      ch: (st, me, c) => {
+        const strong = c.weak === 'bat' ? 'P' : 'B', other = strong === 'P' ? 'B' : 'P';
+        const lbl = s => s === me.role ? (s === 'P' ? '투수에만 집중한다' : '타자에만 집중한다') : (s === 'P' ? '투수로 전향한다' : '타자로 전향한다');
+        return ['이도류를 계속한다', lbl(strong), lbl(other)];
+      },
+      safe: 1,
+      res: (st, me, i, c) => {
+        if (i === 0) { me.trust -= 2; return '"알았다. 대신 둘 다 무너지면 그땐 내가 정한다."'; }
+        const side = (i === 1) === (c.weak === 'bat') ? 'P' : 'B';
+        me.twoWay = false; me.focus = 1.1;
+        if (side !== me.role) {
+          me.role = side; me.pos = side === 'P' ? (me.r.sta >= BAL.twoWay.spSta ? 'SP' : 'RP') : 'DH'; me.flags.closer = false;
+          me.trainFocus = (me.trainFocus || []).filter(k => mainKeys(me).indexOf(k) >= 0);
+          story(st, `${me.age}세, 이도류를 내려놓고 ${side === 'P' ? '투수' : '타자'}로 전향했다.`);
+          return side === 'P' ? '방망이를 내려놓았다. 이제 마운드가 내 자리다.' : '글러브 대신 방망이를 잡았다. 이제 타석이 내 자리다.';
+        }
+        story(st, `${me.age}세, 이도류를 내려놓았다.`);
+        return '한 우물을 파기로 했다.';
+      },
+    },
     {
       id: 'twkeep', cat: '포지션', who: '감독', repeat: true, w: 0.8, cond: (st, me) => me.twoWay, text: '"올해도 둘 다 할 거냐? 몸이 버텨줄지 걱정이다."',
       ch: (st, me) => ['이도류를 계속한다', me.role === 'P' ? '투수에만 집중한다' : '타자에만 집중한다'], safe: 1,
