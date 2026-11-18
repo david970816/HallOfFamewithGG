@@ -266,6 +266,27 @@ table.linescore .cur { background: rgba(196,53,43,.12); color: var(--ink); font-
 .pos-grid b { font-weight: 900; }
 .pos-grid i { font-style: normal; }
 .pos-grid div { flex-wrap: wrap; }
+/* 61차: 골든글러브 라인업 — 야구장 위에 포지션별 1위 */
+.lu-panel { padding: 12px 10px; }
+.lu-field { position: relative; width: 100%; max-width: 520px; margin: 0 auto; aspect-ratio: 1 / 1.25; border-radius: 12px; overflow: hidden; background: #2f6b3c; }
+.lu-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lu-grass { fill: #3f8a4d; }
+.lu-dirt { fill: #b98a5a; }
+.lu-infield { fill: #4a9a58; }
+.lu-line { stroke: rgba(255,255,255,.75); stroke-width: .5; fill: none; }
+.lu-slot { position: absolute; transform: translate(-50%, -50%); width: 24%; max-width: 104px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 3px 3px; border-radius: 10px; background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 0 2px 6px rgba(0,0,0,.25); text-align: center; }
+.lu-slot .lu-av { width: 30px; height: 30px; border-radius: 6px; flex: none; }
+.lu-empty { width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; background: var(--paper2); color: var(--mute); font-weight: 900; }
+.lu-name { font-size: 12px; font-weight: 900; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.lu-score { font-size: 11px; font-weight: 800; color: var(--gold); }
+.lu-pos { font-size: 10px; font-weight: 700; color: var(--mute); white-space: nowrap; }
+.lu-tw { font-style: normal; margin-left: 3px; padding: 0 4px; border-radius: 6px; font-size: 9px; background: var(--paper2); color: var(--red); }
+.lu-cf { left: 50%; top: 10%; } .lu-lf { left: 16%; top: 24%; } .lu-rf { left: 84%; top: 24%; }
+.lu-ss { left: 30%; top: 42%; } .lu-2b { left: 70%; top: 42%; }
+.lu-3b { left: 15%; top: 65%; } .lu-1b { left: 85%; top: 65%; }
+.lu-sp { left: 50%; top: 61%; } .lu-c { left: 50%; top: 89%; }
+.lu-bench { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+.lu-bench .lu-slot { position: static; transform: none; width: 46%; max-width: 160px; background: var(--paper2); box-shadow: none; }
 .funnel { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; }
 .funnel b { font-weight: 900; }
 .funnel i { font-style: normal; margin-left: 2px; }
@@ -404,6 +425,7 @@ table.lg tr.me td { background: rgba(196,53,43,.1); font-weight: 800; }
 .home-ask:hover { text-decoration: underline; }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink2); font-size: 14px; line-height: 1; text-decoration: none; cursor: pointer; }
 .icon-btn:hover { color: var(--ink); border-color: var(--ink2); }
+.icon-btn.txt { width: auto; padding: 0 7px; font-size: 12px; font-weight: 900; letter-spacing: -.02em; }
 .page-top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; }
 .guide-sec h3 { margin: 2px 0 8px; }
 .guide-sec p { margin: 0 0 8px; font-size: 14px; line-height: 1.6; color: var(--ink2); }

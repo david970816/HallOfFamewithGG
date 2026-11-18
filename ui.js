@@ -160,6 +160,7 @@
   // ---------- 31차: 홈 오른쪽 위 아이콘 · 공략집 · 공지사항 · 패치노트 ----------
   const CT = window.GAME_CONTENT || { notices: [], guide: [], patches: [] };
   const IG_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.3" cy="6.7" r="1.2" fill="currentColor"/></svg>';
+  const X_SVG ='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3zm-1.08 16.2h1.7L7.4 4.73H5.58L16.67 19.2z"/></svg>';
   // 34차: 새 공지·패치노트 빨간 점 — 내용 요약(서명)이 마지막으로 본 것과 다르면 점을 띄우고, 화면에 들어가면 본 것으로 기록
   const KEY_SEEN = 'dugout_seen';
   function contentSig(kind) {
@@ -173,7 +174,9 @@
     const dot = k => isNew(k) ? '<span class="new-dot" aria-label="새 글"></span>' : '';
     return `<button class="icon-btn" data-act="page" data-v="notice" title="공지사항" aria-label="공지사항">📢${dot('notice')}</button>
       <button class="icon-btn" data-act="page" data-v="patch" title="패치노트" aria-label="패치노트">📝${dot('patch')}</button>
-      ${CT.instagram ? `<a class="icon-btn ig" href="${esc(CT.instagram)}" target="_blank" rel="noopener" title="인스타그램" aria-label="인스타그램">${IG_SVG}</a>` : ''}`;
+      <button class="icon-btn txt" data-act="page" data-v="guide" title="공략집" aria-label="공략집">공략</button>
+      ${CT.instagram ? `<a class="icon-btn ig" href="${esc(CT.instagram)}" target="_blank" rel="noopener" title="인스타그램" aria-label="인스타그램">${IG_SVG}</a>` : ''}
+      ${CT.x ? `<a class="icon-btn ig" href="${esc(CT.x)}" target="_blank" rel="noopener" title="X (트위터)" aria-label="X">${X_SVG}</a>` : ''}`;
   }
   function pageShell(title, body) {
     return `<div class="topbar page-top"><button class="btn small" data-act="home">← 뒤로</button><span class="title">${esc(title)}</span></div>${body}`;
@@ -283,19 +286,32 @@
       .catch(() => { App.lb.err = true; })
       .then(() => { App.lb.loading = false; App.lb.at = Date.now(); if (App.view === 'home') render(); });
   }
-  // 은퇴 때: 역대 20위 또는 이번 시즌 50위 점수보다 높을 때만 보낸다 (대부분의 판은 서버에 아무것도 보내지 않는다)
+  // 61차: 골든글러브 라인업 포지션 — 이도류(중간에 그만둔 경우 포함)는 처음 고른 포지션, 아니면 가장 오래 뛴 포지션. 마무리는 불펜(RP)
+  const LINEUP_POS = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH', 'SP', 'RP'];
+  function lineupPos(st) {
+    const me = st.me, f = st.final, tw = !!(me.twoWay || me.twoWayChosen);
+    let p = tw ? (me.flags && me.flags.pos0) || me.pos : (f.mainPos && f.mainPos !== 'TW' ? f.mainPos : me.pos);
+    if (p === 'CL') p = 'RP';
+    return LINEUP_POS.indexOf(p) >= 0 ? p : null;
+  }
+  // 은퇴 때: 역대 20위 · 이번 시즌 50위 · 내 포지션 1위(외야 3위)보다 높을 때만 보낸다 (대부분의 판은 서버에 아무것도 보내지 않는다)
   function lbSubmit(st) {
-    const f = st.final, S = seasonInfo(), since = new Date(S.start).toISOString();
+    const f = st.final, S = seasonInfo(), since = new Date(S.start).toISOString(), lp = lineupPos(st);
     st._lb = 'checking';
     Promise.all([
       lbFetch(`top50?select=score&order=score.desc,id.asc&offset=${ALL_MAX - 1}&limit=1`),
       lbFetch(`top50?select=score&created_at=gte.${since}&order=score.desc,id.asc&offset=${SEASON_MAX - 1}&limit=1`),
+      // 포지션 기준 (서버에 lpos 칸이 아직 없으면 실패 → 이 기준은 쓰지 않는다)
+      lp ? lbFetch(`top50?select=score&or=(lpos.eq.${lp},and(lpos.is.null,pos.eq.${lp}))&order=score.desc,id.asc&offset=${lp === 'OF' ? 2 : 0}&limit=1`).then(r => ({ r }), () => null) : null,
     ])
-      .then(([a, s]) => {
+      .then(([a, s, p]) => {
         const cutA = a && a.length ? +a[0].score : -1, cutS = s && s.length ? +s[0].score : -1;
-        if (f.score <= cutA && f.score <= cutS) { st._lb = 'out'; return; }
+        const cutP = p ? (p.r && p.r.length ? +p.r[0].score : -1) : Infinity;
+        if (f.score <= cutA && f.score <= cutS && f.score <= cutP) { st._lb = 'out'; return; }
         const c = cardData(st);
-        return lbFetch('top50', { method: 'POST', body: JSON.stringify({ name: f.name, pos: f.mainPos && f.mainPos !== 'TW' ? f.mainPos : f.pos, two_way: !!f.twoWay, score: f.score, war: Math.round(f.war * 10) / 10, hof: !!(f.hof && f.hof.in), avatar: c.avatar, color: c.color, card: c }), headers: { Prefer: 'return=minimal' } })
+        const body = { name: f.name, pos: f.mainPos && f.mainPos !== 'TW' ? f.mainPos : f.pos, two_way: !!(st.me.twoWay || st.me.twoWayChosen), score: f.score, war: Math.round(f.war * 10) / 10, hof: !!(f.hof && f.hof.in), avatar: c.avatar, color: c.color, card: c };
+        if (p && lp) body.lpos = lp;
+        return lbFetch('top50', { method: 'POST', body: JSON.stringify(body), headers: { Prefer: 'return=minimal' } })
           .then(() => Promise.all([
             f.score > cutA ? lbFetch(`top50?select=id&score=gt.${f.score}&limit=${ALL_MAX}`) : null,
             lbFetch(`top50?select=id&created_at=gte.${since}&score=gt.${f.score}&limit=${SEASON_MAX}`),
@@ -345,8 +361,58 @@
       else if (!App.lb.err) { all = []; season = []; sub = '전체 플레이어'; }
       else sub = '온라인 연결 실패 · 이 기기 기록';
     }
-    return rankPanel(all, { title: '역대 최고점수 TOP 20', sub, max: ALL_MAX, podium: true, empty: '아직 기록이 없다. 시상대 맨 위에 서 보자.', foot: '이름을 누르면 야구카드를 볼 수 있다.' })
+    return rankPanel(all, { title: '명예의 전당 [역대 TOP20]', sub, max: ALL_MAX, podium: true, empty: '아직 기록이 없다. 시상대 맨 위에 서 보자.', foot: '이름을 누르면 야구카드를 볼 수 있다.' })
       + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: true, /* 53차: 시즌 순위도 1~3위 시상대 */ note: `매일 밤 12시(한국 시간) 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
+  }
+  // 61차: 골든글러브 라인업 — 포지션마다 커리어 점수 1위(외야는 1~3위)를 야구장에 세운다
+  App.lu = { list: null, at: 0, loading: false, err: false };
+  function lineupLoad() {
+    if (!LB_ON || App.lu.loading || (App.lu.at && Date.now() - App.lu.at < 60000)) return;
+    App.lu.loading = true;
+    const q = cols => lbFetch(`top50?select=${cols}&order=score.desc,id.asc&limit=300`);
+    q('id,name,pos,lpos,two_way,score,avatar,color').catch(() => q('id,name,pos,two_way,score,avatar,color'))   // lpos 칸이 아직 없으면 pos 로
+      .then(rows => { App.lu.list = (rows || []).map(r => Object.assign(lbRow(r), { lpos: r.lpos || null })); App.lu.err = false; })
+      .catch(() => { App.lu.err = true; })
+      .then(() => { App.lu.loading = false; App.lu.at = Date.now(); if (App.view === 'lineup') render(); });
+  }
+  function lineupPick(rows) {
+    const by = {};
+    for (const r of rows.slice().sort((a, b) => b.score - a.score)) {
+      const p = r.lpos || (r.pos === 'CL' ? 'RP' : r.pos);
+      if (LINEUP_POS.indexOf(p) < 0) continue;
+      (by[p] = by[p] || []).push(r);
+    }
+    return by;
+  }
+  function viewLineup() {
+    let rows = null, sub = '전체 플레이어';
+    if (LB_ON) { lineupLoad(); if (App.lu.list) rows = App.lu.list; else if (App.lu.err) sub = '온라인 연결 실패 · 이 기기 기록'; }
+    if (!rows && (!LB_ON || App.lu.err)) {
+      rows = store.get(KEY_REC, []).map(r => ({ name: r.name, pos: r.pos, twoWay: r.twoWay, score: r.score, avatar: r.card ? r.card.avatar : 1, color: r.card ? r.card.color : '#3d4a5c' }));
+      if (!LB_ON) sub = '이 기기 기록';
+    }
+    if (!rows) return pageShell('골든글러브 라인업', '<div class="panel muted small">라인업을 불러오는 중…</div>');
+    const by = lineupPick(rows), of = by.OF || [];
+    const slot = (r, label, cls) => `<div class="lu-slot ${cls}">${r
+      ? `<canvas class="pod-av lu-av" width="16" height="16" data-av="${+r.avatar || 1}" data-color="${esc(r.color || '#3d4a5c')}"></canvas>
+         <b class="lu-name">${esc(r.name)}</b><span class="lu-score num">${r.score.toLocaleString()}점</span>
+         <span class="lu-pos">${label}${r.twoWay ? '<i class="lu-tw">이도류</i>' : ''}</span>`
+      : `<div class="lu-empty">?</div><span class="lu-pos">${label}</span>`}</div>`;
+    const field = `<div class="lu-field">
+      <svg class="lu-bg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M50 98 L2 50 Q50 -6 98 50 Z" class="lu-grass"/>
+        <path d="M50 92 L24 66 L50 40 L76 66 Z" class="lu-dirt"/>
+        <path d="M50 86 L30 66 L50 46 L70 66 Z" class="lu-infield"/>
+        <circle cx="50" cy="64" r="4" class="lu-dirt"/>
+        <path d="M50 98 L2 50 M50 98 L98 50" class="lu-line"/>
+      </svg>
+      ${slot(of[0], '중견수', 'lu-cf')}${slot(of[1], '좌익수', 'lu-lf')}${slot(of[2], '우익수', 'lu-rf')}
+      ${slot((by.SS || [])[0], '유격수', 'lu-ss')}${slot((by['2B'] || [])[0], '2루수', 'lu-2b')}
+      ${slot((by['3B'] || [])[0], '3루수', 'lu-3b')}${slot((by['1B'] || [])[0], '1루수', 'lu-1b')}
+      ${slot((by.SP || [])[0], '선발투수', 'lu-sp')}${slot((by.C || [])[0], '포수', 'lu-c')}
+    </div>
+    <div class="lu-bench">${slot((by.DH || [])[0], '지명타자', 'lu-dh')}${slot((by.RP || [])[0], '불펜투수', 'lu-rp')}</div>`;
+    return pageShell('골든글러브 라인업', `<div class="panel lu-panel"><div class="tiny muted" style="margin-bottom:8px">포지션별 커리어 점수 1위 · ${esc(sub)} · 이도류는 처음 고른 포지션</div>${field}</div>`);
   }
   function drawPodium() {
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
@@ -374,7 +440,7 @@
     const sv = loadSave();
     const recs = store.get(KEY_REC, []);
     return `
-      <div class="row home-top">${devToggle()}${CT.instagram ? `<a class="home-ask tiny muted" href="${esc(CT.instagram)}" target="_blank" rel="noopener">문의 및 오류 제보는 인스타로 해주세요</a>` : ''}<span class="spacer"></span>${homeIcons()}</div>
+      <div class="row home-top">${devToggle()}<span class="spacer"></span>${homeIcons()}</div>
       <div class="home-hero">
         <canvas id="hero-pix" class="hero-pix" width="64" height="26" aria-label="투수가 던지고 타자가 받아치는 픽셀 그림"></canvas>
         <h1>골글 들고 명전으로</h1>
@@ -383,7 +449,7 @@
       <div class="home-actions">
         ${sv && !sv.done ? `<button class="btn go block" data-act="continue">이어하기 · ${esc(sv.me.name)} (${sv.me.age}세)</button>` : ''}
         <button class="btn ${sv && !sv.done ? '' : 'go'} block" data-act="new">새 인생 시작</button>
-        <button class="btn block" data-act="page" data-v="guide">📖 공략집</button>
+        <button class="btn block" data-act="page" data-v="lineup">🧤 골든글러브 라인업</button>
         ${App.admin ? `<button class="btn block small ghost" data-act="admin">${App.dev ? '<span class="admin-on">관리자 모드 ON</span> · 끄기' : '관리자 모드 들어가기'}</button>` : ''}
       </div>
       ${App.dev ? '<div class="panel admin-panel small">관리자 모드: 진행 화면에서 내 선수의 잠재능력(PA)·등급·성장/노화 유형·전성기 시기를, 리그 탭 구단 기록에서 선수 OVR을 볼 수 있다.</div>' : ''}
@@ -1540,9 +1606,11 @@
     else if (App.view === 'guide') html = viewGuide();
     else if (App.view === 'notice') html = viewNotice();
     else if (App.view === 'patch') html = viewPatch();
+    else if (App.view === 'lineup') html = viewLineup();
     $app.innerHTML = html;
     if (App.view === 'create') afterCreate();
     if (App.view === 'home') { startHero(); drawPodium(); }
+    if (App.view === 'lineup') drawPodium();
     if (App.view === 'main' || App.view === 'retire') afterCard();
     // 59차: 우승 애니메이션이 떠 있는 동안 같은 화면이 다시 그려져도(국제대회 마지막 경기 0.8초 뒤 등) 지우지 않는다 — '계속'을 눌러야 닫힘
     const troOpen = App.troView && App.troView === App.view && $modal.querySelector('.tro-overlay');
@@ -1588,6 +1656,7 @@
     const call = st.pending.length && st.pending[0].id === 'intlCall';
     startLoading(finish, null, { year, stage, pauseAt: call ? 0.55 : null, onPause: resume => { App.afterIntl = resume; showEvent(); } });
   }
+  const nextIsCall = () => !!(App.st && App.st.pending.length && App.st.pending[0].id === 'intlCall');
   function autoPlay() {
     const st = App.st;
     let g = 0;
@@ -1658,6 +1727,7 @@
         showReaction(r ? r.reaction : '', () => {
           if (App.st.done) { $modal.innerHTML = ''; App.view = 'retire'; recordRetire(); render(); window.scrollTo(0, 0); return; }
           if (r && r.intl) { $modal.innerHTML = ''; App.intlRes = r.intl; App.intlShown = 0; App.intlInn = 0; App.view = 'intl'; render(); window.scrollTo(0, 0); intlReveal(); return; }
+          if (curId === 'intlCall' && nextIsCall()) { showEvent(); return; }   // 61차: 같은 해 다음 대회 소집
           if (curId === 'intlCall' && App.afterIntl) { $modal.innerHTML = ''; const f = App.afterIntl; App.afterIntl = null; f(); return; }
           if (App.st.pending.length) showEvent(); else { $modal.innerHTML = ''; render(); }
         }, r);
@@ -1676,7 +1746,7 @@
       case 'hof-replay': showHof(); break;
       case 'trophy-ok': if (e.target.closest('.tro-box') && !e.target.closest('[data-act="trophy-ok"].btn')) break; $modal.innerHTML = ''; App.troView = null; break;
       case 'intl-skip': App.intlShown = App.intlRes.games.length; render(); break;
-      case 'intl-done': App.intlRes = null; if (App.afterIntl) { const f = App.afterIntl; App.afterIntl = null; f(); break; } App.view = 'main'; render(); window.scrollTo(0, 0); if (App.st.pending.length) showEvent(); break;
+      case 'intl-done': App.intlRes = null; if (nextIsCall()) { showEvent(); break; } if (App.afterIntl) { const f = App.afterIntl; App.afterIntl = null; f(); break; } App.view = 'main'; render(); window.scrollTo(0, 0); if (App.st.pending.length) showEvent(); break;
       case 'tf-open': App.tfOpen = true; App.tfPick = []; render(); break;
       case 'tf-close': App.tfOpen = false; App.tfPick = []; render(); break;
       case 'tf-pick': { const a = App.tfPick || []; const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else { a.push(v); if (a.length > 2) a.shift(); } App.tfPick = a; render(); break; }

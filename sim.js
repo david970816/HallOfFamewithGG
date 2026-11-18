@@ -79,9 +79,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     intl: [
       // 14차: 선발 기준 완화. OVR+WAR 기준을 넘거나, OVR이 모자라도 시즌 WAR이 warOnly 이상이면 선발
       { id: 'AG', name: '아시안게임', from: 2030, every: 4, ovr: 53, war: 1.2, warOnly: 2.5, maxAge: 25, wildOVR: 57, win: 0.8, exempt: true, medal: '금메달' },
-      { id: 'OLY', name: '올림픽', years: [2028, 2036, 2044, 2052], ovr: 56, war: 2, warOnly: 3.5, win: 0.5, exempt: true, medal: '동메달 이상' },
+      // 61차: 올림픽 4년마다(예전 8년), WBC 3년마다 → 한 해에 대회가 겹칠 수 있다 (예: 2032 올림픽+WBC, 2038 아시안게임+WBC)
+      { id: 'OLY', name: '올림픽', from: 2028, every: 4, ovr: 56, war: 2, warOnly: 3.5, win: 0.5, exempt: true, medal: '동메달 이상' },
       { id: 'P12', name: '프리미어12', from: 2027, every: 4, ovr: 57, war: 2.2, warOnly: 3.8, win: 0.3, exempt: false, medal: '우승' },
-      { id: 'WBC', name: 'WBC', from: 2029, every: 4, ovr: 59, war: 2.8, warOnly: 4.2, win: 0.15, exempt: false, medal: '우승' },
+      { id: 'WBC', name: 'WBC', from: 2029, every: 3, ovr: 59, war: 2.8, warOnly: 4.2, win: 0.15, exempt: false, medal: '우승' },
     ],
     // 23차: 명예의 전당 헌액 기준 (하나라도 달성). peakOVR은 화면 표시 눈금
     hof: { war: 62, mvp: 2, titles: 4, titlesWar: 40, peakOVR: 95, peakWar: 45, hits: 2500, hr: 420, wins: 190, saves: 350, ks: 2600, twoWay: 3 },
@@ -294,13 +295,18 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   function defRuns(r, pos) { return L(r.def, T.defR) * (DEFMUL[pos] || 0) + L(r.arm, T.armR) * (ARMMUL[pos] || 0); }
   // 수비 기록: 수비 기회·실책·수비율 (기대값 + 약간의 흔들림)
   const DEFCH = { C: 7.2, '1B': 8.8, '2B': 4.9, '3B': 2.8, SS: 4.4, OF: 2.1 };
+  // 61차: 실책은 수비 능력(+송구가 많은 포지션은 어깨)에 크게 좌우 — 수비 50 기준 실책률 ERRBASE, 잘할수록 지수로 줄어든다
+  //       수비 기여도 = 능력 기반 기여 − (실제 실책 − 기대 실책) × 0.7점  → 실책이 많으면 그해 기여도도 깎인다
+  const ERRBASE = { C: .008, '1B': .005, '2B': .017, '3B': .044, SS: .032, OF: .015 };
+  const ARMERR = { C: 0.6, '1B': 0.1, '2B': 0.3, '3B': 0.8, SS: 0.7, OF: 0.4 };
   function defLine(r, pos, G, rnd) {
     if (!DEFCH[pos] || !G) return null;
     const ch = Math.round(DEFCH[pos] * G);
-    const base = { C: .992, '1B': .993, '2B': .983, '3B': .956, SS: .968, OF: .985 }[pos];
-    const fp = clamp(base + (r.def - 50) * 0.0004 + (rnd ? rnd() * 0.004 : 0), 0.9, 0.999);
-    const E = Math.max(0, Math.round(ch * (1 - fp)));
-    return { CH: ch, E, DEF: Math.round(defRuns(r, pos) * G / 140 * 10) / 10 };
+    const skill = (r.def - 50) * 0.02 + (r.arm - 50) * 0.01 * ARMERR[pos];
+    const expRate = clamp(ERRBASE[pos] * Math.exp(-skill), 0.001, 0.12);
+    const rate = expRate * (rnd ? Math.exp((rnd() - 0.5) * 0.5) : 1);
+    const E = Math.max(0, Math.round(ch * rate));
+    return { CH: ch, E, DEF: Math.round((defRuns(r, pos) * G / 140 - (E - ch * expRate) * 0.7) * 10) / 10 };
   }
   function batWARraw(s, r, pos, lgOPS) {
     if (!s || !s.PA) return 0;
@@ -1918,7 +1924,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   }
   // ---------- 12차: 국제대회 (선발 기준 통과 시 출전, 아시안게임 금·올림픽 메달은 병역 혜택) ----------
   function intlTournament(st, res) {
-    const me = st.me, year = res.year;
+    const me = st.me, year = res.year, calls = [];
     for (const T of BAL.intl) {
       const held = T.years ? T.years.indexOf(year) >= 0 : (year >= T.from && (year - T.from) % T.every === 0);
       if (!held) continue;
@@ -1936,13 +1942,14 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         // 14차: 바로 결과를 내지 않고 '국가대표 소집' 결정을 맨 앞에 띄운다 → 수락하면 대회를 경기별로 시뮬레이션
         info.selected = true; info.call = true;
         res.awards.push(`${T.name} 국가대표 발탁`);
-        queue(st, 'intlCall', { tid: T.id, year });
-        st.pending.unshift(st.pending.pop());
+        calls.push(T.id);
       } else {
         info.why = !ageOK ? `나이 제한(${T.maxAge}세 이하, 와일드카드 OVR ${disp(T.wildOVR)})` : !okAbroad ? '해외파는 선발 대상 아님' : me.lvl !== 1 ? '1군 선수만 선발' : `기준: OVR ${disp(T.ovr)} 이상 + 시즌 WAR ${WS(T.war).toFixed(1)} 이상, 또는 시즌 WAR ${WS(T.warOnly).toFixed(1)} 이상`;
       }
       res.intl.push(info);
     }
+    // 61차: 한 해에 여러 대회 소집 가능 — 표에 적힌 순서대로 맨 앞에 띄운다
+    for (let i = calls.length - 1; i >= 0; i--) { queue(st, 'intlCall', { tid: calls[i], year }); st.pending.unshift(st.pending.pop()); }
   }
   // ---------- 14차: 국제대회 경기별 시뮬레이션 ----------
   // 상대별 한국 승리 확률 (대표팀 기준), 대회별 대진
