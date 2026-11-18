@@ -361,7 +361,7 @@
     const sv = loadSave();
     const recs = store.get(KEY_REC, []);
     return `
-      <div class="row home-top">${devToggle()}<span class="spacer"></span>${homeIcons()}</div>
+      <div class="row home-top">${devToggle()}${CT.instagram ? `<a class="home-ask tiny muted" href="${esc(CT.instagram)}" target="_blank" rel="noopener">문의 및 오류 제보는 인스타로 해주세요</a>` : ''}<span class="spacer"></span>${homeIcons()}</div>
       <div class="home-hero">
         <canvas id="hero-pix" class="hero-pix" width="64" height="26" aria-label="투수가 던지고 타자가 받아치는 픽셀 그림"></canvas>
         <h1>골글 들고 명전으로</h1>
