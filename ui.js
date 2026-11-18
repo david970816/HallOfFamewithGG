@@ -1268,7 +1268,24 @@
       minutes: fl.t0 ? Math.round((Date.now() - fl.t0) / 60000) : null, aw: Object.fromEntries(Object.entries(f.aw || {}).filter(([, n]) => n > 0)),
       admin: !!(App.admin || /[?&]admin=/.test(location.search)),
       abil: { start: pickKeys(fl.r0, keys), peak: abilOf(st.car.peakR || me.r, keys), pot: abilOf(me.pa, keys) },
+      log: seasonLog(st),
     };
+  }
+  // 시즌별 기록 — 타자: 타율·안타·홈런·OPS(+타석) / 투수: ERA·탈삼진·승·홀드·세이브·이닝 / 공통: 나이·리그·1군/2군·WAR
+  function seasonLog(st) {
+    const r3 = x => Math.round(x * 1000) / 1000, r2 = x => Math.round(x * 100) / 100;
+    return st.hist.filter(h => (h.bat && h.bat.PA) || (h.pit && h.pit.outs)).slice(0, 30).map(h => {
+      const o = { age: h.age, lg: h.lg || null, lv: (h.bat && h.bat.fut) || (h.pit && h.pit.fut) ? '2군' : (h.lvl === '1군' || h.lvl === '2군' ? h.lvl : '아마') };
+      if (h.war != null) o.war = Math.round(h.war * 10) / 10;
+      const b = h.bat; if (b && b.PA) {
+        const avg = b.AB ? b.H / b.AB : 0, obp = (b.H + b.BB) / b.PA, slg = b.AB ? (b.H + (b.D || 0) + 2 * (b.T || 0) + 3 * b.HR) / b.AB : 0;
+        o.b = { pa: Math.round(b.PA), avg: r3(avg), h: Math.round(b.H), hr: Math.round(b.HR), ops: r3(obp + slg) };
+      }
+      const p = h.pit; if (p && p.outs) {
+        o.p = { ip: Math.floor(p.outs / 3) + (p.outs % 3) / 10, era: r2(p.ER * 27 / p.outs), k: Math.round(p.K), w: p.W || 0, hld: p.HLD || 0, sv: p.SV || 0 };
+      }
+      return o;
+    });
   }
   function recordRetire() {
     const st = App.st;
