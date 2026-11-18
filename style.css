@@ -257,6 +257,14 @@ table.linescore .cur { background: rgba(196,53,43,.12); color: var(--ink); font-
 
 /* 관리자 */
 .admin-panel { border: 2px dashed var(--gold); }
+.stat-blk + .stat-blk { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line, rgba(127,127,127,.25)); }
+.stat-ttl { font-weight: 900; font-size: 13px; margin-bottom: 6px; }
+.stat-blk .season-sum { margin-bottom: 6px; }
+.pos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.pos-grid div { display: flex; align-items: baseline; gap: 4px; background: var(--paper2); border-radius: 8px; padding: 5px 7px; font-size: 12px; min-width: 0; }
+.pos-grid span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mute); font-weight: 700; }
+.pos-grid b { font-weight: 900; }
+.pos-grid i { font-style: normal; }
 .pa-row { display: grid; grid-template-columns: 46px 1fr 62px; gap: 8px; align-items: center; font-size: 12px; margin-top: 5px; }
 .pa-trk { position: relative; height: 10px; background: var(--bar-bg); border-radius: 99px; overflow: hidden; }
 .pa-trk .cur { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar); border-radius: 99px; }

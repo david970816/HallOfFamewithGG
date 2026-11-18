@@ -226,8 +226,8 @@
   function statsLoad() {
     if (!LB_ON || App.stats.loading || (App.stats.at && Date.now() - App.stats.at < 60000)) return;
     App.stats.loading = true;
-    lbFetch('stats_daily?select=day,kind,n&order=day.desc&limit=3000')
-      .then(rows => { App.stats.data = rows || []; App.stats.err = false; })
+    Promise.all([lbFetch('stats_daily?select=day,kind,n&order=day.desc&limit=3000'), lbFetch('stats_total?select=kind,n').catch(() => null)])
+      .then(([rows, tot]) => { App.stats.data = rows || []; App.stats.total = tot && tot.length ? tot : null; App.stats.err = false; })
       .catch(() => { App.stats.err = true; })
       .then(() => { App.stats.loading = false; App.stats.at = Date.now(); if (App.view === 'home') render(); });
   }
@@ -239,13 +239,19 @@
     const S = App.stats;
     if (!S.data) return box(`<div class="small muted">${S.err ? '통계를 불러오지 못했다. Supabase에서 supabase-stats.sql을 실행했는지 확인.' : '불러오는 중…'}</div>`);
     const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);   // 한국 날짜
-    const sum = (k, d) => S.data.filter(r => r.kind === k && (!d || r.day === d)).reduce((a, r) => a + (+r.n || 0), 0);
-    const K = [['visit', '접속'], ['create', '생성된 선수'], ['retire', '은퇴한 선수']];
-    const days = [...new Set(S.data.map(r => r.day))].sort().reverse().slice(0, 7);
-    return box(`<div class="season-sum">${K.map(([k, t]) => `<div><b>${sum(k).toLocaleString()}</b><span>${t} (전체)</span></div>`).join('')}</div>
-      <div class="season-sum" style="margin-top:6px">${K.map(([k, t]) => `<div><b>${sum(k, today).toLocaleString()}</b><span>오늘 ${t}</span></div>`).join('')}</div>
-      ${days.length ? `<div class="tbl-scroll" style="margin-top:8px"><table class="lg"><tr><th>날짜</th>${K.map(([, t]) => `<th>${t}</th>`).join('')}</tr>${days.map(d => `<tr><td>${esc(d.slice(5))}</td>${K.map(([k]) => `<td>${sum(k, d)}</td>`).join('')}</tr>`).join('')}</table></div>` : ''}
-      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
+    const tot = k => S.total ? S.total.filter(r => r.kind === k).reduce((a, r) => a + (+r.n || 0), 0) : S.data.filter(r => r.kind === k).reduce((a, r) => a + (+r.n || 0), 0);
+    const day = k => S.data.filter(r => r.kind === k && r.day === today).reduce((a, r) => a + (+r.n || 0), 0);
+    const K = [['visit', '접속'], ['create', '생성'], ['retire', '은퇴'], ['hof', '명예의 전당']];
+    const P = ['C', '1B', '2B', '3B', 'SS', 'OF', 'SP', 'RP', 'CL'];
+    const pname = p => ({ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', SP: '선발', RP: '불펜', CL: '마무리' })[p];
+    const block = (title, f) => {
+      const made = P.reduce((a, p) => a + f('pos_' + p), 0);
+      return `<div class="stat-blk"><div class="stat-ttl">${title}</div>
+        <div class="season-sum">${K.map(([k, t]) => `<div><b>${f(k).toLocaleString()}</b><span>${t}</span></div>`).join('')}</div>
+        <div class="pos-grid">${P.map(p => { const n = f('pos_' + p); return `<div><span>${pname(p)}</span><b class="num">${n.toLocaleString()}</b><i class="tiny muted">${made ? Math.round(n * 100 / made) + '%' : '-'}</i></div>`; }).join('')}</div></div>`;
+    };
+    return box(`${block('누적', tot)}${block(`오늘 <span class="tiny muted">${today.slice(5).replace('-', '/')} · 한국 시간 0시에 초기화</span>`, day)}
+      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 포지션별 생성은 이번 업데이트부터 센다 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
   // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (61차: 시즌 = 한국 시간 하루, 매일 밤 12시에 새 시즌)
@@ -1249,6 +1255,7 @@
     st._rank = keepAll.indexOf(mine) + 1;      // 역대 순위 (0이면 TOP 20 밖)
     st._srank = keepSeason.indexOf(mine) + 1;  // 이번 시즌 순위 (0이면 TOP 50 밖)
     bump('retire');
+    if (mine.hof) bump('hof');
     if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
     save();   // 39차: 커리어 저장 데이터는 지운다 (화면의 은퇴 결산은 메모리에 남아 있음)
@@ -1560,7 +1567,7 @@
       case 'cr-pick': App.create.pick = +v; render(); break;
       case 'cr-reroll': App.create.candSeed = (Math.random() * 1e9) >>> 0; App.create.pick = 0; rollCands(); render(); break;
       case 'cr-ava': App.create.avatar = (Math.random() * 1e6) | 0; render(); break;
-      case 'cr-start': startCareer(); bump('create'); break;
+      case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) bump('pos_' + (App.st.me.flags.closer ? 'CL' : App.st.me.pos)); break;
       case 'flip': App.flipped = !App.flipped; el.classList.toggle('flipped', App.flipped); break;
       case 'tab': App.tab = v; render(); break;
       case 'lgcat': App.lgCat = v; render(); break;
