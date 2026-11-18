@@ -1246,19 +1246,28 @@
     const t = txt(st._rank, st._srank);
     return t ? span(t + ' — 야구카드가 순위표에 남았다') : '';
   }
+  // 능력치 12개를 화면 표시 숫자(1~99)로
+  const ABIL_B = ['con', 'pow', 'eye', 'spd', 'def', 'arm'], ABIL_P = ['vel', 'ctl', 'stf', 'brk', 'sta', 'men'], ABIL_KEYS = ABIL_B.concat(ABIL_P);
+  function abilOf(r, keys) { if (!r) return null; const o = {}; for (const k of keys || ABIL_KEYS) if (r[k] != null) o[k] = Sim.disp(r[k]); return o; }
+  const pickKeys = (o, keys) => o ? Object.fromEntries(keys.filter(k => o[k] != null).map(k => [k, o[k]])) : null;
   // 밸런스 분석용 한 줄 — 이름 같은 개인정보는 보내지 않는다
   function careerRow(st) {
     const me = st.me, f = st.final, fl = me.flags || {}, r1 = h => h.lvl === '1군';
     const seasonsIn = lg => st.hist.filter(h => h.lg === lg && r1(h)).length;
     const r1d = x => Math.round((+x || 0) * 10) / 10;
+    // 이도류를 한 번이라도 했으면(중간에 그만뒀어도) 12개 전부, 아니면 타자는 타자 6개 · 투수는 투수 6개
+    const twEver = !!(me.twoWay || me.twoWayChosen), twQuit = twEver && !me.twoWay;
+    const roleChanged = fl.role0 && fl.role0 !== me.role;   // 이도류 없이 투타를 바꾼 경우도 전부
+    const keys = twEver || roleChanged ? ABIL_KEYS : me.role === 'P' ? ABIL_P : ABIL_B;
     return {
-      build: window.GAME_BUILD || 0, pos0: fl.pos0 || null, main_pos: f.mainPos || null, two_way: !!f.twoWay,
+      build: window.GAME_BUILD || 0, pos0: fl.pos0 || null, main_pos: f.mainPos || null, two_way: twEver, tw_quit: twQuit,
       tier: f.tier, growth: f.growth, score: f.score, war: r1d(f.war), war_b: r1d(f.warB), war_p: r1d(f.warP),
       hof: !!(f.hof && f.hof.in), retire_age: f.retireAge, seasons: f.seasons, peak: f.peak,
       draft: me.draft ? String(me.draft.round) : '없음', origin: me.origin || 'hs',
       kbo: seasonsIn('KBO'), npb: seasonsIn('NPB'), mlb: seasonsIn('MLB'), debut: me.debut != null, vol: !!me.volRet,
       minutes: fl.t0 ? Math.round((Date.now() - fl.t0) / 60000) : null, aw: Object.fromEntries(Object.entries(f.aw || {}).filter(([, n]) => n > 0)),
       admin: !!(App.admin || /[?&]admin=/.test(location.search)),
+      abil: { start: pickKeys(fl.r0, keys), peak: abilOf(st.car.peakR || me.r, keys), pot: abilOf(me.pa, keys) },
     };
   }
   function recordRetire() {
@@ -1603,7 +1612,7 @@
       case 'cr-pick': App.create.pick = +v; render(); break;
       case 'cr-reroll': App.create.candSeed = (Math.random() * 1e9) >>> 0; App.create.pick = 0; rollCands(); render(); break;
       case 'cr-ava': App.create.avatar = (Math.random() * 1e6) | 0; render(); break;
-      case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) { App.st.me.flags.pos0 = App.st.me.flags.closer ? 'CL' : App.st.me.pos; App.st.me.flags.t0 = Date.now(); App.st.me.flags.ms = {}; save(); bump('pos_' + App.st.me.flags.pos0); } break;
+      case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) { App.st.me.flags.pos0 = App.st.me.flags.closer ? 'CL' : App.st.me.pos; App.st.me.flags.t0 = Date.now(); App.st.me.flags.ms = {}; App.st.me.flags.r0 = abilOf(App.st.me.r); App.st.me.flags.role0 = App.st.me.role; save(); bump('pos_' + App.st.me.flags.pos0); } break;
       case 'flip': App.flipped = !App.flipped; el.classList.toggle('flipped', App.flipped); break;
       case 'tab': App.tab = v; render(); break;
       case 'lgcat': App.lgCat = v; render(); break;
