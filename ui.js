@@ -246,6 +246,7 @@
     const day = k => S.data.filter(r => r.kind === k && r.day === today).reduce((a, r) => a + (+r.n || 0), 0);
     const K = [['visit', '접속'], ['create', '생성'], ['retire', '은퇴'], ['hof', '명예의 전당']];
     const P = STAT_POS;
+    const M = [['pro', '프로 입단'], ['debut', '1군 데뷔'], ['starter', '주전'], ['s3', '3시즌'], ['s6', '6시즌'], ['s10', '10시즌'], ['s15', '15시즌']];
     const pname = p => ({ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', SP: '선발', RP: '불펜', CL: '마무리' })[p];
     // 포지션별 평균 점수 — 처음 고른 포지션 기준, 은퇴한 선수만
     const avgOf = (rows, p) => { const r = (rows || []).filter(x => x.pos === p), n = r.reduce((a, x) => a + (+x.n || 0), 0), s = r.reduce((a, x) => a + (+x.sum || 0), 0); return n ? { avg: Math.round(s / n), n } : null; };
@@ -253,10 +254,11 @@
       const made = P.reduce((a, p) => a + f('pos_' + p), 0);
       return `<div class="stat-blk"><div class="stat-ttl">${title}</div>
         <div class="season-sum">${K.map(([k, t]) => `<div><b>${f(k).toLocaleString()}</b><span>${t}</span></div>`).join('')}</div>
-        <div class="pos-grid">${P.map(p => { const n = f('pos_' + p), a = avgOf(scRows, p); return `<div><span>${pname(p)}</span><b class="num">${n.toLocaleString()}</b><i class="tiny muted">${made ? Math.round(n * 100 / made) + '%' : '-'}</i><em class="tiny" title="${a ? `은퇴 ${a.n}명 평균` : '아직 은퇴 기록 없음'}">평균 ${a ? a.avg.toLocaleString() + '점' : '-'}</em></div>`; }).join('')}</div></div>`;
+        <div class="pos-grid">${P.map(p => { const n = f('pos_' + p), a = avgOf(scRows, p); return `<div><span>${pname(p)}</span><b class="num">${n.toLocaleString()}</b><i class="tiny muted">${made ? Math.round(n * 100 / made) + '%' : '-'}</i><em class="tiny" title="${a ? `은퇴 ${a.n}명 평균` : '아직 은퇴 기록 없음'}">평균 ${a ? a.avg.toLocaleString() + '점' : '-'}</em></div>`; }).join('')}</div>
+        <div class="funnel tiny"><span class="muted">도달</span>${M.map(([k, t]) => { const n = f('m_' + k); return `<span>${t} <b class="num">${n.toLocaleString()}</b>${made ? `<i class="muted">${Math.round(n * 100 / made)}%</i>` : ''}</span>`; }).join('')}</div></div>`;
     };
     return box(`${block('누적', tot, S.scT)}${block(`오늘 <span class="tiny muted">${today.slice(5).replace('-', '/')} · 한국 시간 0시에 초기화</span>`, day, (S.scD || []).filter(r => r.day === today))}
-      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 칸마다 생성 수 · 비율 · 은퇴한 선수의 평균 점수(처음 고른 포지션 기준) · 포지션 수와 평균 점수는 이번 업데이트부터 센다 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
+      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 칸마다 생성 수 · 비율 · 은퇴한 선수의 평균 점수(처음 고른 포지션 기준) · 도달 % = 포지션별 생성 합계 대비 그 단계까지 간 선수 · 포지션·평균·도달은 업데이트 이후 만든 선수만 센다 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
   // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (61차: 시즌 = 한국 시간 하루, 매일 밤 12시에 새 시즌)
@@ -1244,6 +1246,20 @@
     const t = txt(st._rank, st._srank);
     return t ? span(t + ' — 야구카드가 순위표에 남았다') : '';
   }
+  // 밸런스 분석용 한 줄 — 이름 같은 개인정보는 보내지 않는다
+  function careerRow(st) {
+    const me = st.me, f = st.final, fl = me.flags || {}, r1 = h => h.lvl === '1군';
+    const seasonsIn = lg => st.hist.filter(h => h.lg === lg && r1(h)).length;
+    const r1d = x => Math.round((+x || 0) * 10) / 10;
+    return {
+      build: window.GAME_BUILD || 0, pos0: fl.pos0 || null, main_pos: f.mainPos || null, two_way: !!f.twoWay,
+      tier: f.tier, growth: f.growth, score: f.score, war: r1d(f.war), war_b: r1d(f.warB), war_p: r1d(f.warP),
+      hof: !!(f.hof && f.hof.in), retire_age: f.retireAge, seasons: f.seasons, peak: f.peak,
+      draft: me.draft ? String(me.draft.round) : '없음', origin: me.origin || 'hs',
+      kbo: seasonsIn('KBO'), npb: seasonsIn('NPB'), mlb: seasonsIn('MLB'), debut: me.debut != null, vol: !!me.volRet,
+      minutes: fl.t0 ? Math.round((Date.now() - fl.t0) / 60000) : null, aw: Object.fromEntries(Object.entries(f.aw || {}).filter(([, n]) => n > 0)),
+    };
+  }
   function recordRetire() {
     const st = App.st;
     if (!st.final || st._recorded) return;
@@ -1259,9 +1275,11 @@
     const top = all.filter(r => keepAll.indexOf(r) >= 0 || keepSeason.indexOf(r) >= 0);
     st._rank = keepAll.indexOf(mine) + 1;      // 역대 순위 (0이면 TOP 20 밖)
     st._srank = keepSeason.indexOf(mine) + 1;  // 이번 시즌 순위 (0이면 TOP 50 밖)
+    milestones(st);
     bump('retire');
     if (mine.hof) bump('hof');
     { const p0 = [st.me.flags && st.me.flags.pos0, f.mainPos, st.me.pos].find(p => STAT_POS.indexOf(p) >= 0); if (p0 && statOK()) lbFetch('rpc/add_score', { method: 'POST', body: JSON.stringify({ p: p0, s: f.score }) }).catch(() => { }); }
+    if (statOK()) lbFetch('rpc/add_career', { method: 'POST', body: JSON.stringify({ d: careerRow(st) }) }).catch(() => { });
     if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
     save();   // 39차: 커리어 저장 데이터는 지운다 (화면의 은퇴 결산은 메모리에 남아 있음)
@@ -1507,8 +1525,19 @@
     if (!troOpen && (App.view === 'post' || App.view === 'result' || App.view === 'intl')) maybeTrophy();
     if (App.view === 'retire' && App.st && App.st.final && App.st.final.hof && App.st.final.hof.in && !App.st._hofSeen) showHof();
   }
+  // 진행 단계 수 — 이번 업데이트 이후 만든 선수만, 단계마다 한 번씩
+  function milestones(st) {
+    const me = st.me, m = me && me.flags && me.flags.ms;
+    if (!m) return;
+    const n = st.hist.length, hit = {
+      pro: !!me.draft, debut: me.debut != null, starter: !!me.everStarter,
+      s3: n >= 3, s6: n >= 6, s10: n >= 10, s15: n >= 15,
+    };
+    for (const k in hit) if (hit[k] && !m[k]) { m[k] = 1; bump('m_' + k); }
+  }
   function goAfterSeason() {
     const st = App.st;
+    milestones(st);
     if (st.done) { App.view = 'retire'; App.flipped = false; recordRetire(); render(); window.scrollTo(0, 0); return; }
     App.view = 'main'; render(); window.scrollTo(0, 0);
     if (st.pending.length) showEvent();
@@ -1573,7 +1602,7 @@
       case 'cr-pick': App.create.pick = +v; render(); break;
       case 'cr-reroll': App.create.candSeed = (Math.random() * 1e9) >>> 0; App.create.pick = 0; rollCands(); render(); break;
       case 'cr-ava': App.create.avatar = (Math.random() * 1e6) | 0; render(); break;
-      case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) { App.st.me.flags.pos0 = App.st.me.flags.closer ? 'CL' : App.st.me.pos; save(); bump('pos_' + App.st.me.flags.pos0); } break;
+      case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) { App.st.me.flags.pos0 = App.st.me.flags.closer ? 'CL' : App.st.me.pos; App.st.me.flags.t0 = Date.now(); App.st.me.flags.ms = {}; save(); bump('pos_' + App.st.me.flags.pos0); } break;
       case 'flip': App.flipped = !App.flipped; el.classList.toggle('flipped', App.flipped); break;
       case 'tab': App.tab = v; render(); break;
       case 'lgcat': App.lgCat = v; render(); break;

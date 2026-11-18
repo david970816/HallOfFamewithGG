@@ -2834,7 +2834,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   // ================================================================
   function pendingItem(st) { return st.pending[0] || null; }
   function retireOpts(st, me) { const left = me.contract && me.contract.until >= st.year; return ['retire', left ? 'stay' : null, me.abroad ? 'kbo' : 'release'].filter(Boolean); }
-  function voluntaryRetire(st) { bind(st); retire(st, st.me.stage === 'pro' ? `${st.me.age}세, 스스로 은퇴를 선언했다. 박수칠 때 떠난다.` : `${st.me.age}세, 스스로 야구를 내려놓았다.`); }
+  function voluntaryRetire(st) { bind(st); st.me.volRet = true; retire(st, st.me.stage === 'pro' ? `${st.me.age}세, 스스로 은퇴를 선언했다. 박수칠 때 떠난다.` : `${st.me.age}세, 스스로 야구를 내려놓았다.`); }
 
   // 표시용
   function view(st) {
