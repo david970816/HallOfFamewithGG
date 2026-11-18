@@ -218,16 +218,19 @@
       .then(t => t ? JSON.parse(t) : null);   // 저장(201)은 빈 응답으로 온다
   }
   const LOCALHOST = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !window.__countLocal;   // __countLocal: 테스트 페이지용
+  const STAT_POS = ['C', '1B', '2B', '3B', 'SS', 'OF', 'SP', 'RP', 'CL'];
+  const statOK = () => LB_ON && !App.admin && !LOCALHOST && !/[?&]admin=/.test(location.search);
   function bump(k) {
-    if (!LB_ON || App.admin || LOCALHOST || /[?&]admin=/.test(location.search)) return;
+    if (!statOK()) return;
     lbFetch('rpc/bump', { method: 'POST', body: JSON.stringify({ k }) }).catch(() => { });
   }
   App.stats = { data: null, at: 0, err: false, loading: false };
   function statsLoad() {
     if (!LB_ON || App.stats.loading || (App.stats.at && Date.now() - App.stats.at < 60000)) return;
     App.stats.loading = true;
-    Promise.all([lbFetch('stats_daily?select=day,kind,n&order=day.desc&limit=3000'), lbFetch('stats_total?select=kind,n').catch(() => null)])
-      .then(([rows, tot]) => { App.stats.data = rows || []; App.stats.total = tot && tot.length ? tot : null; App.stats.err = false; })
+    Promise.all([lbFetch('stats_daily?select=day,kind,n&order=day.desc&limit=3000'), lbFetch('stats_total?select=kind,n').catch(() => null),
+      lbFetch('score_total?select=pos,n,sum').catch(() => null), lbFetch('score_daily?select=day,pos,n,sum').catch(() => null)])
+      .then(([rows, tot, sT, sD]) => { App.stats.data = rows || []; App.stats.total = tot && tot.length ? tot : null; App.stats.scT = sT || []; App.stats.scD = sD || []; App.stats.err = false; })
       .catch(() => { App.stats.err = true; })
       .then(() => { App.stats.loading = false; App.stats.at = Date.now(); if (App.view === 'home') render(); });
   }
@@ -242,16 +245,18 @@
     const tot = k => S.total ? S.total.filter(r => r.kind === k).reduce((a, r) => a + (+r.n || 0), 0) : S.data.filter(r => r.kind === k).reduce((a, r) => a + (+r.n || 0), 0);
     const day = k => S.data.filter(r => r.kind === k && r.day === today).reduce((a, r) => a + (+r.n || 0), 0);
     const K = [['visit', '접속'], ['create', '생성'], ['retire', '은퇴'], ['hof', '명예의 전당']];
-    const P = ['C', '1B', '2B', '3B', 'SS', 'OF', 'SP', 'RP', 'CL'];
+    const P = STAT_POS;
     const pname = p => ({ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', SP: '선발', RP: '불펜', CL: '마무리' })[p];
-    const block = (title, f) => {
+    // 포지션별 평균 점수 — 처음 고른 포지션 기준, 은퇴한 선수만
+    const avgOf = (rows, p) => { const r = (rows || []).filter(x => x.pos === p), n = r.reduce((a, x) => a + (+x.n || 0), 0), s = r.reduce((a, x) => a + (+x.sum || 0), 0); return n ? { avg: Math.round(s / n), n } : null; };
+    const block = (title, f, scRows) => {
       const made = P.reduce((a, p) => a + f('pos_' + p), 0);
       return `<div class="stat-blk"><div class="stat-ttl">${title}</div>
         <div class="season-sum">${K.map(([k, t]) => `<div><b>${f(k).toLocaleString()}</b><span>${t}</span></div>`).join('')}</div>
-        <div class="pos-grid">${P.map(p => { const n = f('pos_' + p); return `<div><span>${pname(p)}</span><b class="num">${n.toLocaleString()}</b><i class="tiny muted">${made ? Math.round(n * 100 / made) + '%' : '-'}</i></div>`; }).join('')}</div></div>`;
+        <div class="pos-grid">${P.map(p => { const n = f('pos_' + p), a = avgOf(scRows, p); return `<div><span>${pname(p)}</span><b class="num">${n.toLocaleString()}</b><i class="tiny muted">${made ? Math.round(n * 100 / made) + '%' : '-'}</i><em class="tiny" title="${a ? `은퇴 ${a.n}명 평균` : '아직 은퇴 기록 없음'}">평균 ${a ? a.avg.toLocaleString() + '점' : '-'}</em></div>`; }).join('')}</div></div>`;
     };
-    return box(`${block('누적', tot)}${block(`오늘 <span class="tiny muted">${today.slice(5).replace('-', '/')} · 한국 시간 0시에 초기화</span>`, day)}
-      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 포지션별 생성은 이번 업데이트부터 센다 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
+    return box(`${block('누적', tot, S.scT)}${block(`오늘 <span class="tiny muted">${today.slice(5).replace('-', '/')} · 한국 시간 0시에 초기화</span>`, day, (S.scD || []).filter(r => r.day === today))}
+      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 칸마다 생성 수 · 비율 · 은퇴한 선수의 평균 점수(처음 고른 포지션 기준) · 포지션 수와 평균 점수는 이번 업데이트부터 센다 · 관리자 브라우저와 내 컴퓨터에서의 플레이는 세지 않는다 · 1분마다 새로 받음</div>`);
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
   // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (61차: 시즌 = 한국 시간 하루, 매일 밤 12시에 새 시즌)
@@ -1256,6 +1261,7 @@
     st._srank = keepSeason.indexOf(mine) + 1;  // 이번 시즌 순위 (0이면 TOP 50 밖)
     bump('retire');
     if (mine.hof) bump('hof');
+    { const p0 = [st.me.flags && st.me.flags.pos0, f.mainPos, st.me.pos].find(p => STAT_POS.indexOf(p) >= 0); if (p0 && statOK()) lbFetch('rpc/add_score', { method: 'POST', body: JSON.stringify({ p: p0, s: f.score }) }).catch(() => { }); }
     if (LB_ON) lbSubmit(st);   // 47차: 온라인 TOP 50 (이 기기 기록은 연결 실패 때 보여 줄 예비용)
     store.set(KEY_REC, top);
     save();   // 39차: 커리어 저장 데이터는 지운다 (화면의 은퇴 결산은 메모리에 남아 있음)
@@ -1567,7 +1573,7 @@
       case 'cr-pick': App.create.pick = +v; render(); break;
       case 'cr-reroll': App.create.candSeed = (Math.random() * 1e9) >>> 0; App.create.pick = 0; rollCands(); render(); break;
       case 'cr-ava': App.create.avatar = (Math.random() * 1e6) | 0; render(); break;
-      case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) bump('pos_' + (App.st.me.flags.closer ? 'CL' : App.st.me.pos)); break;
+      case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) { App.st.me.flags.pos0 = App.st.me.flags.closer ? 'CL' : App.st.me.pos; save(); bump('pos_' + App.st.me.flags.pos0); } break;
       case 'flip': App.flipped = !App.flipped; el.classList.toggle('flipped', App.flipped); break;
       case 'tab': App.tab = v; render(); break;
       case 'lgcat': App.lgCat = v; render(); break;
