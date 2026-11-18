@@ -244,7 +244,7 @@
     const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);   // 한국 날짜
     const tot = k => S.total ? S.total.filter(r => r.kind === k).reduce((a, r) => a + (+r.n || 0), 0) : S.data.filter(r => r.kind === k).reduce((a, r) => a + (+r.n || 0), 0);
     const day = k => S.data.filter(r => r.kind === k && r.day === today).reduce((a, r) => a + (+r.n || 0), 0);
-    const K = [['visit', '접속'], ['create', '생성'], ['retire', '은퇴'], ['hof', '명예의 전당']];
+    const K = [['uv', '접속'], ['create', '생성'], ['retire', '은퇴'], ['hof', '명예의 전당']];
     const P = STAT_POS;
     const M = [['pro', '프로 입단'], ['debut', '1군 데뷔'], ['starter', '주전'], ['s3', '3시즌'], ['s6', '6시즌'], ['s10', '10시즌'], ['s15', '15시즌']];
     const pname = p => ({ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', SP: '선발', RP: '불펜', CL: '마무리' })[p];
@@ -253,12 +253,12 @@
     const block = (title, f, scRows) => {
       const made = P.reduce((a, p) => a + f('pos_' + p), 0);
       return `<div class="stat-blk"><div class="stat-ttl">${title}</div>
-        <div class="season-sum">${K.map(([k, t]) => `<div><b>${f(k).toLocaleString()}</b><span>${t}</span></div>`).join('')}</div>
+        <div class="season-sum">${K.map(([k, t]) => `<div><b>${(k === 'uv' ? f('uv') + f('visit') : f(k)).toLocaleString()}</b><span>${t}</span></div>`).join('')}</div>
         <div class="pos-grid">${P.map(p => { const n = f('pos_' + p), a = avgOf(scRows, p); return `<div><span>${pname(p)}</span><b class="num">${n.toLocaleString()}</b><i class="tiny muted">${made ? Math.round(n * 100 / made) + '%' : '-'}</i><em class="tiny" title="${a ? `은퇴 ${a.n}명 평균` : '아직 은퇴 기록 없음'}">평균 ${a ? a.avg.toLocaleString() + '점' : '-'}</em></div>`; }).join('')}</div>
         <div class="funnel tiny"><span class="muted">도달</span>${M.map(([k, t]) => { const n = f('m_' + k); return `<span>${t} <b class="num">${n.toLocaleString()}</b>${made ? `<i class="muted">${Math.round(n * 100 / made)}%</i>` : ''}</span>`; }).join('')}</div></div>`;
     };
     return box(`${block('누적', tot, S.scT)}${block(`오늘 <span class="tiny muted">${today.slice(5).replace('-', '/')} · 한국 시간 0시에 초기화</span>`, day, (S.scD || []).filter(r => r.day === today))}
-      <div class="tiny muted" style="margin-top:6px">접속 = 브라우저 탭을 열 때 1회 · 칸마다 생성 수 · 비율 · 은퇴한 선수의 평균 점수(처음 고른 포지션 기준) · 도달 % = 포지션별 생성 합계 대비 그 단계까지 간 선수 · 포지션·평균·도달은 업데이트 이후 만든 선수만 센다 · 관리자 플레이도 센다 · 1분마다 새로 받음</div>`);
+      <div class="tiny muted" style="margin-top:6px">접속 = 기기마다 하루 1회(누적은 날마다 더한 값, 예전 방식으로 센 접속도 포함) ·칸마다 생성 수 · 비율 · 은퇴한 선수의 평균 점수(처음 고른 포지션 기준) · 도달 % = 포지션별 생성 합계 대비 그 단계까지 간 선수 · 포지션·평균·도달은 업데이트 이후 만든 선수만 센다 · 관리자 플레이도 센다 · 1분마다 새로 받음</div>`);
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
   // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (61차: 시즌 = 한국 시간 하루, 매일 밤 12시에 새 시즌)
@@ -1698,9 +1698,14 @@
   })();
 
   (function countVisit() {
-    let seen = false;
-    try { seen = sessionStorage.getItem('dugout_visit') === '1'; sessionStorage.setItem('dugout_visit', '1'); } catch (e) { }
-    if (!seen) setTimeout(() => bump('visit'), 1500);
+    // 접속 = 순방문자: 기기마다 한국 날짜로 하루 한 번
+    try {
+      const d = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+      if (localStorage.getItem('dugout_uv') !== d) setTimeout(() => {
+        if (!statOK()) return;
+        localStorage.setItem('dugout_uv', d); bump('uv');
+      }, 1500);
+    } catch (e) { }
   })();
 
   (function adminLink() {
