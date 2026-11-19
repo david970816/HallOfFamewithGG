@@ -1825,8 +1825,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   //   중형·대형은 연봉(만원)이나 화제성이 기준을 넘으면 겨울에 영입 제안이 온다.
   const AGENCY = {
     small: { name: '기존 에이전시', skill: [30, 50], fee: 0.03 },
-    mid: { name: '중형 에이전시', skill: [52, 70], fee: 0.05, sal: 10000, pop: 30 },
-    big: { name: '대형 에이전시', skill: [72, 95], fee: 0.08, sal: 30000, pop: 60 },
+    mid: { name: '중형 에이전시', skill: [52, 70], fee: 0.05, sal: 20000, pop: 40 },   // 62차 조정: 연봉 1억 → 2억 (1억은 거의 모든 1군 선수가 넘어서 기존 에이전시가 의미 없었다)
+    big: { name: '대형 에이전시', skill: [72, 95], fee: 0.08, sal: 50000, pop: 70 },   // 3억 → 5억
   };
   function agencyOf(me) {
     if (!me.agency) me.agency = me.flags && me.flags.bigAgent ? { tier: 'big', skill: 80 } : { tier: 'small', skill: 40 };   // 예전 저장: 대형 에이전시로 옮겼던 선수는 대형
@@ -2768,7 +2768,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
           const p = c.lev ? c.lev.p10 : 0.5, u = R();
           if (u < p) { const m = R.range(1.1, 1.2); o = Object.assign({}, c.best, { sal: Math.round(c.best.sal * m / 100) * 100, bon: c.best.bon ? Math.round(c.best.bon * m / 1000) * 1000 : 0 }); negoTxt = '에이전트가 판을 키웠다. 조건이 더 올라갔다! '; k = 'best'; }
           else if (u < p + (1 - p) * 0.4) { o = c.best; negoTxt = '더 받아내진 못했지만 처음 조건은 지켰다. '; k = 'best'; }
-          else { o = c.stay; k = 'stay'; me.pop -= 2; negoTxt = `${teamName(st, c.best.team)}이(가) 협상에서 발을 뺐다. 결국 원소속 구단에 남는다. `; }
+          else { o = c.stay; k = 'stay'; me.pop -= 2; negoTxt = `${tj(st, c.best.team, '이', '가')} 협상에서 발을 뺐다. 결국 원소속 구단에 남는다. `; }
         }
         if (o.bon) { me.earnings += Math.round(o.bon * (1 - AGENCY[agencyOf(me).tier].fee)); me.pop += 2; }
         if (negoTxt) story(st, `${me.age}세 FA, 에이전트에게 협상을 맡겼다.`);
