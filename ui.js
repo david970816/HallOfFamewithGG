@@ -31,7 +31,7 @@
 
   // ---------- 포맷 ----------
   const r3 = v => Sim.rate3(v);
-  const ip = s => { const o = s.outs || 0; return Math.floor(o / 3) + (o % 3 ? '.' + (o % 3) : ''); };
+  const ip = s => Sim.ipTxt(s);
   const f2 = v => (Math.round(v * 100) / 100).toFixed(2);
   const f1 = v => (Math.round(v * 10) / 10).toFixed(1);
   const ALLTEAMS = GAME_DATA.teams.concat(GAME_DATA.npbTeams || [], GAME_DATA.mlbTeams || [], GAME_DATA.univTeams || []);
@@ -40,7 +40,7 @@
   const HANDS = [['R', 'R', '우투우타'], ['R', 'L', '우투좌타'], ['L', 'L', '좌투좌타'], ['L', 'R', '좌투우타']];
   function handText(me) { return (me.throws === 'R' ? '우투' : '좌투') + (me.bats === 'R' ? '우타' : me.bats === 'L' ? '좌타' : '양타'); }
   function mainPosText(f, me) { return f.mainPos === 'TW' ? '이도류' : (Sim.POSNAME[f.mainPos] || posText(me)); }
-  function posText(me) { return (me.pos === 'RP' && me.flags && me.flags.closer ? '마무리투수' : Sim.POSNAME[me.pos]) + (me.twoWay ? ' · 이도류' : ''); }
+  function posText(me) { return (me.pos === 'RP' && me.flags && me.flags.closer ? '마무리투수' : Sim.posName(me)) + (me.twoWay ? ' · 이도류' : ''); }
 
   // ---------- 픽셀 아바타 ----------
   function drawAvatar(cv, seed, color) {
@@ -287,31 +287,38 @@
       .then(() => { App.lb.loading = false; App.lb.at = Date.now(); if (App.view === 'home') render(); });
   }
   // 61차: 골든글러브 라인업 포지션 — 이도류(중간에 그만둔 경우 포함)는 처음 고른 포지션, 아니면 가장 오래 뛴 포지션. 마무리는 불펜(RP)
-  const LINEUP_POS = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH', 'SP', 'RP'];
+  // 62차: 외야를 좌익수·중견수·우익수로 나눴다 (예전 기록의 OF는 세 자리에 점수 순으로 채운다)
+  const LINEUP_POS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'OF', 'DH', 'SP', 'RP'];
   function lineupPos(st) {
     const me = st.me, f = st.final, tw = !!(me.twoWay || me.twoWayChosen);
     let p = tw ? (me.flags && me.flags.pos0) || me.pos : (f.mainPos && f.mainPos !== 'TW' ? f.mainPos : me.pos);
     if (p === 'CL') p = 'RP';
+    if (p === 'OF') p = me.ofPos || 'OF';
     return LINEUP_POS.indexOf(p) >= 0 ? p : null;
   }
-  // 은퇴 때: 역대 20위 · 이번 시즌 50위 · 내 포지션 1위(외야 3위)보다 높을 때만 보낸다 (대부분의 판은 서버에 아무것도 보내지 않는다)
+  // 은퇴 때: 역대 20위 · 이번 시즌 50위 · 내 포지션 1위(역대·이번 시즌)보다 높을 때만 보낸다 (대부분의 판은 서버에 아무것도 보내지 않는다)
   function lbSubmit(st) {
     const f = st.final, S = seasonInfo(), since = new Date(S.start).toISOString(), lp = lineupPos(st);
     st._lb = 'checking';
+    const posQ = lp ? `select=score&or=(lpos.eq.${lp},and(lpos.is.null,pos.eq.${lp}))&order=score.desc,id.asc&offset=${lp === 'OF' ? 2 : 0}&limit=1` : '';
     Promise.all([
       lbFetch(`top50?select=score&order=score.desc,id.asc&offset=${ALL_MAX - 1}&limit=1`),
       lbFetch(`top50?select=score&created_at=gte.${since}&order=score.desc,id.asc&offset=${SEASON_MAX - 1}&limit=1`),
       // 포지션 기준 (서버에 lpos 칸이 아직 없으면 실패 → 이 기준은 쓰지 않는다)
-      lp ? lbFetch(`top50?select=score&or=(lpos.eq.${lp},and(lpos.is.null,pos.eq.${lp}))&order=score.desc,id.asc&offset=${lp === 'OF' ? 2 : 0}&limit=1`).then(r => ({ r }), () => null) : null,
+      lp ? lbFetch(`top50?${posQ}`).then(r => ({ r }), () => null) : null,
+      lp ? lbFetch(`top50?${posQ}&created_at=gte.${since}`).then(r => ({ r }), () => null) : null,
     ])
-      .then(([a, s, p]) => {
+      .then(([a, s, p, ps]) => {
         const cutA = a && a.length ? +a[0].score : -1, cutS = s && s.length ? +s[0].score : -1;
         const cutP = p ? (p.r && p.r.length ? +p.r[0].score : -1) : Infinity;
-        if (f.score <= cutA && f.score <= cutS && f.score <= cutP) { st._lb = 'out'; return; }
+        const cutPS = ps ? (ps.r && ps.r.length ? +ps.r[0].score : -1) : Infinity;
+        if (f.score <= cutA && f.score <= cutS && f.score <= cutP && f.score <= cutPS) { st._lb = 'out'; return; }
         const c = cardData(st);
         const body = { name: f.name, pos: f.mainPos && f.mainPos !== 'TW' ? f.mainPos : f.pos, two_way: !!(st.me.twoWay || st.me.twoWayChosen), score: f.score, war: Math.round(f.war * 10) / 10, hof: !!(f.hof && f.hof.in), avatar: c.avatar, color: c.color, card: c };
         if (p && lp) body.lpos = lp;
-        return lbFetch('top50', { method: 'POST', body: JSON.stringify(body), headers: { Prefer: 'return=minimal' } })
+        const post = b => lbFetch('top50', { method: 'POST', body: JSON.stringify(b), headers: { Prefer: 'return=minimal' } });
+        // 서버가 아직 좌익·중견·우익(LF·CF·RF)을 모르면 예전처럼 외야(OF)로 한 번 더 보낸다
+        return post(body).catch(e => { if (!/^(LF|CF|RF)$/.test(body.lpos || '')) throw e; return post(Object.assign({}, body, { lpos: 'OF', pos: 'OF' })); })
           .then(() => Promise.all([
             f.score > cutA ? lbFetch(`top50?select=id&score=gt.${f.score}&limit=${ALL_MAX}`) : null,
             lbFetch(`top50?select=id&created_at=gte.${since}&score=gt.${f.score}&limit=${SEASON_MAX}`),
@@ -365,13 +372,16 @@
       + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: true, /* 53차: 시즌 순위도 1~3위 시상대 */ note: `매일 밤 12시(한국 시간) 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
   }
   // 61차: 골든글러브 라인업 — 포지션마다 커리어 점수 1위(외야는 1~3위)를 야구장에 세운다
-  App.lu = { list: null, at: 0, loading: false, err: false };
+  // 62차: 역대 라인업 + 이번 시즌(오늘) 라인업
+  App.lu = { list: null, season: null, at: 0, loading: false, err: false, tab: 'all' };
   function lineupLoad() {
     if (!LB_ON || App.lu.loading || (App.lu.at && Date.now() - App.lu.at < 60000)) return;
     App.lu.loading = true;
-    const q = cols => lbFetch(`top50?select=${cols}&order=score.desc,id.asc&limit=300`);
-    q('id,name,pos,lpos,two_way,score,avatar,color').catch(() => q('id,name,pos,two_way,score,avatar,color'))   // lpos 칸이 아직 없으면 pos 로
-      .then(rows => { App.lu.list = (rows || []).map(r => Object.assign(lbRow(r), { lpos: r.lpos || null })); App.lu.err = false; })
+    const since = new Date(seasonInfo().start).toISOString();
+    const q = (cols, extra) => lbFetch(`top50?select=${cols}&order=score.desc,id.asc&limit=300${extra || ''}`);
+    const both = cols => Promise.all([q(cols), q(cols, `&created_at=gte.${since}`)]);
+    both('id,name,pos,lpos,two_way,score,avatar,color').catch(() => both('id,name,pos,two_way,score,avatar,color'))   // lpos 칸이 아직 없으면 pos 로
+      .then(([rows, srows]) => { const m = r => Object.assign(lbRow(r), { lpos: r.lpos || null }); App.lu.list = (rows || []).map(m); App.lu.season = (srows || []).map(m); App.lu.err = false; })
       .catch(() => { App.lu.err = true; })
       .then(() => { App.lu.loading = false; App.lu.at = Date.now(); if (App.view === 'lineup') render(); });
   }
@@ -382,17 +392,25 @@
       if (LINEUP_POS.indexOf(p) < 0) continue;
       (by[p] = by[p] || []).push(r);
     }
+    // 좌익·중견·우익: 그 자리 1위와 예전 외야(OF) 기록 중 점수가 높은 쪽
+    const old = (by.OF || []).slice();
+    for (const x of ['CF', 'LF', 'RF']) {
+      const a = (by[x] || [])[0], b = old[0];
+      by[x] = b && (!a || b.score > a.score) ? [old.shift()] : a ? [a] : [];
+    }
     return by;
   }
   function viewLineup() {
+    const tab = App.lu.tab === 'season' ? 'season' : 'all';
     let rows = null, sub = '전체 플레이어';
-    if (LB_ON) { lineupLoad(); if (App.lu.list) rows = App.lu.list; else if (App.lu.err) sub = '온라인 연결 실패 · 이 기기 기록'; }
+    if (LB_ON) { lineupLoad(); if (App.lu.list) rows = tab === 'season' ? App.lu.season || [] : App.lu.list; else if (App.lu.err) sub = '온라인 연결 실패 · 이 기기 기록'; }
     if (!rows && (!LB_ON || App.lu.err)) {
-      rows = store.get(KEY_REC, []).map(r => ({ name: r.name, pos: r.pos, twoWay: r.twoWay, score: r.score, avatar: r.card ? r.card.avatar : 1, color: r.card ? r.card.color : '#3d4a5c' }));
+      rows = store.get(KEY_REC, []).filter(r => tab === 'all' || inSeason(r)).map(r => ({ name: r.name, pos: r.pos, twoWay: r.twoWay, score: r.score, avatar: r.card ? r.card.avatar : 1, color: r.card ? r.card.color : '#3d4a5c' }));
       if (!LB_ON) sub = '이 기기 기록';
     }
-    if (!rows) return pageShell('골든글러브 라인업', '<div class="panel muted small">라인업을 불러오는 중…</div>');
-    const by = lineupPick(rows), of = by.OF || [];
+    const tabs = `<div class="lg-pick" style="margin-bottom:8px">${[['all', '역대 골든글러브'], ['season', '시즌 골든글러브']].map(([k, t]) => `<button class="${tab === k ? 'on' : ''}" data-act="lu-tab" data-v="${k}">${t}</button>`).join('')}</div>`;
+    if (!rows) return pageShell('골든글러브 라인업', `${tabs}<div class="panel muted small">라인업을 불러오는 중…</div>`);
+    const by = lineupPick(rows);
     const slot = (r, label, cls) => `<div class="lu-slot ${cls}">${r
       ? `<canvas class="pod-av lu-av" width="16" height="16" data-av="${+r.avatar || 1}" data-color="${esc(r.color || '#3d4a5c')}"></canvas>
          <b class="lu-name">${esc(r.name)}</b><span class="lu-score num">${r.score.toLocaleString()}점</span>
@@ -406,13 +424,15 @@
         <circle cx="50" cy="64" r="4" class="lu-dirt"/>
         <path d="M50 98 L2 50 M50 98 L98 50" class="lu-line"/>
       </svg>
-      ${slot(of[0], '중견수', 'lu-cf')}${slot(of[1], '좌익수', 'lu-lf')}${slot(of[2], '우익수', 'lu-rf')}
+      ${slot(by.CF[0], '중견수', 'lu-cf')}${slot(by.LF[0], '좌익수', 'lu-lf')}${slot(by.RF[0], '우익수', 'lu-rf')}
       ${slot((by.SS || [])[0], '유격수', 'lu-ss')}${slot((by['2B'] || [])[0], '2루수', 'lu-2b')}
       ${slot((by['3B'] || [])[0], '3루수', 'lu-3b')}${slot((by['1B'] || [])[0], '1루수', 'lu-1b')}
       ${slot((by.SP || [])[0], '선발투수', 'lu-sp')}${slot((by.C || [])[0], '포수', 'lu-c')}
     </div>
     <div class="lu-bench">${slot((by.DH || [])[0], '지명타자', 'lu-dh')}${slot((by.RP || [])[0], '불펜투수', 'lu-rp')}</div>`;
-    return pageShell('골든글러브 라인업', `<div class="panel lu-panel"><div class="tiny muted" style="margin-bottom:8px">포지션별 커리어 점수 1위 · ${esc(sub)} · 이도류는 처음 고른 포지션</div>${field}</div>`);
+    const S = seasonInfo();
+    const head = tab === 'season' ? `오늘 은퇴한 선수 중 포지션별 커리어 점수 1위 · 새 시즌까지 ${leftText(S.end - Date.now())}` : '역대 포지션별 커리어 점수 1위';
+    return pageShell('골든글러브 라인업', `${tabs}<div class="panel lu-panel"><div class="tiny muted" style="margin-bottom:8px">${head} · ${esc(sub)} · 이도류는 처음 고른 포지션</div>${field}</div>`);
   }
   function drawPodium() {
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
@@ -455,7 +475,8 @@
       ${App.dev ? '<div class="panel admin-panel small">관리자 모드: 진행 화면에서 내 선수의 잠재능력(PA)·등급·성장/노화 유형·전성기 시기를, 리그 탭 구단 기록에서 선수 OVR을 볼 수 있다.</div>' : ''}
       ${statsPanel()}
       ${homeBoard(recs)}
-      <p class="tiny muted" style="text-align:center;margin-top:18px">리그 선수는 2025 시즌 실제 명단 기준(능력치는 가상) · 진행 중인 게임은 이 브라우저에 저장된다</p>`;
+      <p class="tiny muted" style="text-align:center;margin-top:18px">리그 선수는 2025 시즌 실제 명단 기준(능력치는 가상) · 진행 중인 게임은 이 브라우저에 저장된다</p>
+      <p class="tiny muted legal" style="text-align:center;margin-top:8px;line-height:1.5">이 게임은 KBO·NPB·MLB 및 각 구단·선수와 공식 관계가 없는 비영리 팬 게임입니다.<br>게임에 나오는 실제 리그·구단 명칭과 선수 이름에 대한 상표권·초상권·퍼블리시티권 등 모든 권리는 각 권리자에게 있습니다.<br>선수 능력치와 경기 결과는 모두 가상입니다. 권리자의 요청이 있으면 해당 내용을 바로 수정·삭제합니다.<br>© 2026 골글 들고 명전으로</p>`;
   }
 
   // ================================================================
@@ -467,14 +488,15 @@
     App.create = { name: randName(), num: 1 + Math.floor(Math.random() * 99), role: 'B', pos: 'SS', hand: 0, school: 'mid', hsName: hs0.name, hometown: hs0.team, pick: 0, candSeed: (Math.random() * 1e9) >>> 0, avatar: (Math.random() * 1e6) | 0, tf: ['con', 'pow'] };
     rollCands();
   }
+  const simPos = p => /^(LF|CF|RF)$/.test(p) ? 'OF' : p === 'CL' ? 'RP' : p;   // 62차: 좌익·중견·우익은 계산상 외야수
   function rollCands() {
     const c = App.create;
-    c.cands = Sim.makeCandidates({ rng: { s: c.candSeed } }, c.role, c.pos === 'CL' ? 'RP' : c.pos);
+    c.cands = Sim.makeCandidates({ rng: { s: c.candSeed } }, c.role, simPos(c.pos));
   }
   function viewCreate() {
     const c = App.create;
     const keys = c.role === 'P' ? Sim.PIT : Sim.BAT;
-    const posList = c.role === 'P' ? ['SP'] : ['C', '1B', '2B', '3B', 'SS', 'OF'];
+    const posList = c.role === 'P' ? ['SP'] : ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
     return `
       <div class="topbar"><button class="btn small" data-act="home">← 홈</button><span class="title">새 인생</span><span class="spacer"></span>${devToggle()}</div>
       <div class="panel" style="margin-top:6px">
@@ -489,7 +511,7 @@
         <label class="f">투수 / 타자</label>
         <div class="seg">${[['B', '타자'], ['P', '투수']].map(([v, t]) => `<button class="${c.role === v ? 'on' : ''}" data-act="cr-role" data-v="${v}">${t}</button>`).join('')}</div>
         <label class="f">포지션</label>
-        ${c.role === 'P' ? '<div class="tiny muted" style="margin-top:2px">고교 시절은 선발로 던진다. 보직(선발·불펜·마무리)은 고교를 졸업할 때 고른다.</div>' : `<div class="seg">${posList.map(p => `<button class="${c.pos === p ? 'on' : ''}" data-act="cr-pos" data-v="${p}">${{ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', SP: '선발', RP: '불펜', CL: '마무리' }[p]}</button>`).join('')}</div>`}
+        ${c.role === 'P' ? '<div class="tiny muted" style="margin-top:2px">고교 시절은 선발로 던진다. 보직(선발·불펜·마무리)은 고교를 졸업할 때 고른다.</div>' : `<div class="seg">${posList.map(p => `<button class="${c.pos === p ? 'on' : ''}" data-act="cr-pos" data-v="${p}">${{ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', LF: '좌익', CF: '중견', RF: '우익', SP: '선발', RP: '불펜', CL: '마무리' }[p]}</button>`).join('')}</div>${/^(LF|CF|RF)$/.test(c.pos) ? '<div class="tiny muted" style="margin-top:4px">좌익수·중견수·우익수는 이름만 다르고 능력치 계산과 기록은 모두 같은 외야수로 친다.</div>' : ''}`}
         <div class="grid2">
           <div><label class="f">투타</label><select class="t" id="cr-hand">${HANDS.map((h, i) => `<option value="${i}" ${c.hand === i ? 'selected' : ''}>${h[2]}</option>`).join('')}</select></div>
           <div><label class="f">고등학교</label><select class="t" id="cr-hs">${GAME_DATA.eliteSchools.map(s => `<option value="${esc(s.name)}" ${c.hsName === s.name ? 'selected' : ''}>${esc(s.name)} (${GAME_DATA.regions[s.team]})</option>`).join('')}</select></div>
@@ -501,7 +523,7 @@
       <div class="panel">
         <div class="row"><h3 style="margin:0">시작 후보</h3><span class="spacer"></span><button class="btn small" data-act="cr-reroll">다른 후보 보기</button></div>
         <div class="tiny muted" style="margin:4px 0 2px">능력치 총량은 같고 구성만 다르다. 잠재력은 끝까지 비밀.</div>
-        <div class="cands">${c.cands.map((cd, i) => `<button class="cand ${c.pick === i ? 'on' : ''}" data-act="cr-pick" data-v="${i}"><div class="head"><b>후보 ${i + 1} · ${cd.label}</b><span class="small muted">OVR <b class="num" style="color:var(--ink)">${Sim.disp(Sim.ovrAt(cd.r, c.pos === 'CL' ? 'RP' : c.pos))}</b></span></div>${miniBars(cd.r, keys)}</button>`).join('')}</div>
+        <div class="cands">${c.cands.map((cd, i) => `<button class="cand ${c.pick === i ? 'on' : ''}" data-act="cr-pick" data-v="${i}"><div class="head"><b>후보 ${i + 1} · ${cd.label}</b><span class="small muted">OVR <b class="num" style="color:var(--ink)">${Sim.disp(Sim.ovrAt(cd.r, simPos(c.pos)))}</b></span></div>${miniBars(cd.r, keys)}</button>`).join('')}</div>
       </div>
       <div class="dock"><div class="in"><button class="btn go block" data-act="cr-start">이 선수로 인생 시작</button></div></div>`;
   }
@@ -636,8 +658,10 @@
       <div><b>${Sim.disp(car.peak || 0)}</b><span>최고 OVR</span></div></div>`;
     const items = H.slice().reverse().map(h => {
       const line = [];
-      if (h.bat && h.bat.PA) line.push(`${h.bat.fut ? '퓨처스 ' : ''}${Sim.fmtBatShort(h.bat)}`);
-      if (h.pit && h.pit.outs) line.push(`${h.pit.fut ? '퓨처스 ' : ''}${Sim.fmtPitShort(h.pit)}`);
+      const fut = h.lg === 'MLB' ? '마이너 ' : h.lg === 'NPB' ? '2군 ' : '퓨처스 ';
+      if (h.bat && h.bat.PA) line.push(`${h.bat.fut ? fut : ''}${Sim.fmtBatShort(h.bat)}`);
+      if (h.pit && h.pit.outs) line.push(`${h.pit.fut ? fut : ''}${Sim.fmtPitShort(h.pit)}`);
+      if (h.inj) line.push('부상으로 시즌 전체 결장 · 0경기');
       const where = h.stage === 'pro' || h.war != null ? `${h.team} · ${h.lvl}` : h.team;
       const ovr = h.ovr != null ? `<span class="s-ovr">OVR <b class="num">${Sim.disp(h.ovr)}</b>${h.ovrD ? `<i class="dv ${h.ovrD > 0 ? 'up' : 'down'}">${h.ovrD > 0 ? '▲' : '▼'}${Math.abs(Sim.dispD(h.ovrD))}</i>` : ''}</span>` : '';
       const aw = (h.awards || (h.note ? h.note.split(', ') : [])).filter(Boolean);
@@ -683,7 +707,7 @@
         : `<button class="btn small" data-act="tf-open" style="margin-top:8px">훈련 부스트 바꾸기</button>`) : ''}</div>`;
   }
   // ---------- 프로필: 계약·구종 ----------
-  function minorName(st) { const c = Sim.cfgOf(st.lg); return c.id === 'KBO' ? '2군(퓨처스)' : c.minor; }
+  function minorName(st) { const c = Sim.cfgOf(st.lg); return c.id === 'KBO' ? '2군(퓨처스)' : c.id === 'MLB' ? '2군(마이너)' : c.minor; }
   function contractPanel(st) {
     const me = st.me;
     if (me.stage !== 'pro') return '';
@@ -700,6 +724,8 @@
       : me.svc >= A.svc ? `포스팅 신청 가능 · 해외 FA까지 1군 ${A.faSvc - me.svc}시즌`
       : `포스팅까지 1군 ${A.svc - me.svc}시즌 · 해외 FA까지 ${A.faSvc - me.svc}시즌`;
     const rows = [['계약', kind], ['연봉', Sim.man(me.salary)], ['기간', c ? `${c.until}년까지 · ${left > 0 ? `남은 ${left}년` : '올해로 만료'}` : '-'], ['FA', fa], ['해외', ab], ['병역', mil]];
+    // 62차: 에이전시 (협상력이 높을수록 연봉 협상·FA 몸값에 유리, 수수료는 연봉에서 뗀다)
+    { const ag = me.agency || { tier: me.flags && me.flags.bigAgent ? 'big' : 'small', skill: me.flags && me.flags.bigAgent ? 80 : 40 }, A = Sim.AGENCY[ag.tier]; const g = ag.skill >= 82 ? 'S' : ag.skill >= 66 ? 'A' : ag.skill >= 50 ? 'B' : 'C'; rows.splice(2, 0, ['에이전시', `${A.name} · 협상력 ${g}급 · 수수료 ${Math.round(A.fee * 100)}%`]); }
     if (me.draft) rows.push(['입단', me.draft.round === '육성' ? `${me.draft.year} 육성선수 (${Sim.teamName(st, me.draft.team)})` : `${me.draft.year} 드래프트 ${me.draft.round}라운드 (${Sim.teamName(st, me.draft.team)})`]);
     return `<div class="panel"><h3>계약 상황</h3><div class="kv-list">${rows.map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div></div>`;
   }
@@ -731,16 +757,17 @@
   function histLg(h) { return h.lg || (h.lvl === 'A' ? (/^고교/.test(h.team) ? 'HS' : h.team === '독립' ? 'IND' : 'UNIV') : 'KBO'); }
   function compData(st) {
     const C = {};
-    const add = (key, h, bat, pit, war, def) => {
-      if (!(bat && bat.PA) && !(pit && pit.outs)) return;
+    // 62차: 부상으로 통째로 날린 시즌(h.inj)도 0으로 한 줄 남긴다
+    const add = (key, h, bat, pit, war, def, inj) => {
+      if (!(bat && bat.PA) && !(pit && pit.outs) && !inj) return;
       const c = C[key] = C[key] || { key, rows: [] };
-      c.rows.push({ year: h.year, age: h.age, team: h.team, bat: bat && bat.PA ? bat : null, pit: pit && pit.outs ? pit : null, war, def: def || null });
+      c.rows.push({ year: h.year, age: h.age, team: inj ? `${h.team} (부상)` : h.team, bat: bat && (bat.PA || inj) ? bat : null, pit: pit && (pit.outs || inj) ? pit : null, war, def: def || null });
     };
     for (const h of st.hist) {
       const lg = histLg(h);
       if (lg === 'HS' || lg === 'UNIV' || lg === 'IND' || lg === 'MIL') { add(lg, h, h.bat, h.pit, null); continue; }
       const top = x => x && !x.fut ? x : null;
-      add(lg + '1', h, top(h.bat), top(h.pit), h.war, h.def);
+      add(lg + '1', h, top(h.bat), top(h.pit), h.war, h.def, h.inj);
       add(lg + '2', h, h.futBat || (h.bat && h.bat.fut ? h.bat : null), h.futPit || (h.pit && h.pit.fut ? h.pit : null), null);
       add(lg + 'PS', h, h.psBat, h.psPit, null);
     }
@@ -782,7 +809,7 @@
   function tabTotal(st) {
     const me = st.me, car = st.car;
     const pro = st.hist.filter(h => !['HS', 'UNIV', 'IND', 'MIL'].includes(histLg(h)));
-    const topRows = pro.map(h => ({ year: h.year, team: `${h.team}${histLg(h) !== 'KBO' ? ` (${histLg(h)})` : ''}`, bat: h.bat && !h.bat.fut && h.bat.PA ? h.bat : null, pit: h.pit && !h.pit.fut && h.pit.outs ? h.pit : null, war: h.war, def: h.def || null }));
+    const topRows = pro.map(h => ({ year: h.year, team: `${h.team}${histLg(h) !== 'KBO' ? ` (${histLg(h)})` : ''}`, bat: h.bat && !h.bat.fut && (h.bat.PA || h.inj) ? h.bat : null, pit: h.pit && !h.pit.fut && (h.pit.outs || h.inj) ? h.pit : null, war: h.war, def: h.def || null }));
     // 구단별
     const byTeam = [];
     const amRows = st.hist.filter(h => ['HS', 'UNIV', 'IND', 'MIL'].includes(histLg(h))).map(h => ({ year: h.year, team: histLg(h) === 'HS' ? '고교 야구부' : histLg(h) === 'IND' ? '독립리그' : histLg(h) === 'MIL' ? h.team : `${h.team} (대학)`, bat: h.bat && h.bat.PA ? h.bat : null, pit: h.pit && h.pit.outs ? h.pit : null, war: null }));
@@ -805,9 +832,19 @@
         <div class="season-sum">${box(pro.length, '프로 시즌')}${box(f1(car.war), '통산 WAR')}${box(car.aw.MVP, 'MVP')}${box(car.aw.KS, '우승')}</div>
         ${batBox}${pitBox}${!batBox && !pitBox ? '<div class="muted small">아직 1군 기록이 없다.</div>' : ''}
         ${car.ps && (car.ps.bat.PA || car.ps.pit.outs) ? `<div class="small muted" style="margin-top:6px">포스트시즌 통산: ${[car.ps.bat.PA ? Sim.fmtBatShort(car.ps.bat) : '', car.ps.pit.outs ? Sim.fmtPitShort(car.ps.pit) : ''].filter(Boolean).map(esc).join(' / ')}</div>` : ''}</div>
+      ${hofPanel(st)}
       ${natPanel(st)}
       <div class="panel"><h3>우승 기록</h3>${titles.length || amTitles.length ? `<div class="aw-list">${titles.concat(amTitles).map(a => `<div class="small">🏆 ${esc(a)}</div>`).join('')}</div>` : '<div class="muted small">아직 우승이 없다.</div>'}</div>
       <div class="panel"><h3>수상</h3>${awards.length ? `<div class="stamps sm">${awards.map(a => `<span class="stamp ${/MVP|골든/.test(a) ? 'gold' : ''}">${esc(a)}</span>`).join('')}</div>` : '<div class="muted small">아직 수상이 없다.</div>'}</div>`;
+  }
+  // 62차: 명예의 전당 기준 — 목록 중 2개 이상을 채워야 헌액
+  function hofPanel(st) {
+    const me = st.me, B = me.role === 'B' || me.twoWay, P = me.role === 'P' || me.twoWay, tw = !!(me.twoWay || me.twoWayChosen);
+    const G = Sim.hofGoals(st).filter(g => !g.k || (g.k === 'B' && B) || (g.k === 'P' && P) || (g.k === 'tw' && tw));
+    const need = Sim.BAL.hof.need || 2, n = G.filter(g => g.ok).length;
+    return `<div class="panel"><h3>명예의 전당 기준 <span class="tiny muted">${need}개 이상 달성하면 은퇴 때 헌액</span></h3>
+      <div class="small" style="margin-bottom:6px">달성 <b>${n}</b> / ${need} ${n >= need ? '<span class="stamp gold" style="margin-left:4px">헌액 기준 충족</span>' : ''}</div>
+      <div class="kv-list">${G.map(g => `<div><span>${g.ok ? '✅' : '⬜'} ${esc(g.t)}</span><b>${esc(g.cur)}</b></div>`).join('')}</div></div>`;
   }
   // 28차: 역대 커리어 — 국가대표 통산
   function natPanel(st) {
@@ -947,11 +984,13 @@
     if (b && b.PA) html += batRow(b, isAm ? null : (res.warB != null ? res.warB : res.war), (p && p.outs) ? '타격' : '');
     if (p && p.outs) html += pitRow(p, isAm ? null : (res.warP != null ? res.warP : res.war), (b && b.PA) ? '투구' : '');
     if (!html && (fb || fp)) {
-      if (fb && fb.PA) html += batRow(fb, null, '퓨처스(2군)');
-      if (fp && fp.outs) html += pitRow(fp, null, '퓨처스(2군)');
+      const mn = res.minor || '2군(퓨처스)';
+      if (fb && fb.PA) html += batRow(fb, null, mn);
+      if (fp && fp.outs) html += pitRow(fp, null, mn);
     } else {
-      if (fb && fb.PA >= 40) html += `<div class="tiny muted" style="margin-top:6px">퓨처스: ${Sim.fmtBatShort(fb)}</div>`;
-      if (fp && fp.outs >= 30) html += `<div class="tiny muted" style="margin-top:6px">퓨처스: ${Sim.fmtPitShort(fp)}</div>`;
+      const mn = (res.minor || '2군(퓨처스)').replace(/^2군\((.+)\)$/, '$1');
+      if (fb && fb.PA >= 40) html += `<div class="tiny muted" style="margin-top:6px">${esc(mn)}: ${Sim.fmtBatShort(fb)}</div>`;
+      if (fp && fp.outs >= 30) html += `<div class="tiny muted" style="margin-top:6px">${esc(mn)}: ${Sim.fmtPitShort(fp)}</div>`;
     }
     return html || '<div class="muted small">출전 기록 없음</div>';
   }
@@ -968,7 +1007,7 @@
     let psTxt = '';
     if (res.post) {
       const champ = Sim.teamName(st, res.post.champion);
-      psTxt = ps ? `포스트시즌: <b>${esc(ps.result)}</b>${ps.bat && ps.bat.PA ? ` · ${ps.bat.PA}타석 ${r3(Sim.AVG(ps.bat))} ${ps.bat.HR}홈런` : ''}${ps.pit && ps.pit.outs ? ` · ${ip(ps.pit)}이닝 ERA ${f2(Sim.ERA(ps.pit))}` : ''}` : `한국시리즈 우승: ${esc(champ)}`;
+      psTxt = ps ? `포스트시즌: <b>${esc(ps.result)}</b>${ps.bat && ps.bat.PA ? ` · ${ps.bat.PA}타석 ${r3(Sim.AVG(ps.bat))} ${ps.bat.HR}홈런` : ''}${ps.pit && ps.pit.outs ? ` · ${ip(ps.pit)}이닝 ERA ${f2(Sim.ERA(ps.pit))}` : ''}` : `${esc(res.post.champName || '한국시리즈')} 우승: ${esc(champ)}`;
     }
     const rv = res.rivalLine;
     return `
@@ -1143,7 +1182,7 @@
     const r = App.intlRes, n = App.intlShown, all = n >= r.games.length, me = App.st.me;
     const live = !all ? liveGame(r, n, App.intlInn || 0) : '';
     const games = r.games.slice(0, n).map((g, i) => `<div class="game ${i === n - 1 && !all ? 'new' : ''}"><span class="tiny muted">${esc(g.stage)}</span><span class="${g.win ? 'w' : ''}">대한민국 ${g.score[0]}</span><span class="muted">:</span><span class="${g.win ? '' : 'w'}">${g.score[1]} ${esc(g.opp)}</span></div><div class="tiny muted intl-me">${esc(me.name)}: ${esc(g.me)}${g.hl ? ` <b class="intl-hl ${/난타|침묵/.test(g.hl) ? 'bad' : ''}">${esc(g.hl)}</b>` : ''}</div>`).join('');
-    const tot = [r.bat ? Sim.fmtBatShort(r.bat).replace(/ OPS.*/, '') + ` (${r.bat.PA}타석)` : '', r.pit ? `${(r.pit.outs / 3).toFixed(1).replace('.0', '')}이닝 ERA ${f2(Sim.ERA(r.pit))} ${r.pit.K}K` : ''].filter(Boolean).join(' / ');
+    const tot = [r.bat ? Sim.fmtBatShort(r.bat).replace(/ OPS.*/, '') + ` (${r.bat.PA}타석)` : '', r.pit ? `${ip(r.pit)}이닝 ERA ${f2(Sim.ERA(r.pit))} ${r.pit.K}K` : ''].filter(Boolean).join(' / ');
     return `
       <div class="topbar"><span class="title">${r.year} ${esc(r.name)}</span><span class="spacer"></span>${all ? '' : '<button class="btn small" data-act="intl-skip">결과 바로 보기</button>'}</div>
       ${all ? `<div class="panel reveal champ-banner ${r.medal ? 'mine' : ''}"><div class="tiny muted">대한민국 국가대표</div><div class="champ-name">${esc(r.result)}</div>${r.closing ? `<div class="small" style="margin:2px 0 4px">${esc(r.closing)}</div>` : ''}${r.rank ? `<div class="small muted">최종 ${r.rank}위 · 참가 ${r.field}개국</div>` : ''}${r.awards && r.awards.length ? `<div class="stamps" style="justify-content:center">${r.awards.map(a => `<span class="stamp gold">${esc(a)}</span>`).join('')}</div>` : ''}${r.milGranted ? '<div class="small" style="color:var(--gold);font-weight:800">병역 혜택을 받았다!</div>' : r.exempt === false && /메달/.test(r.result) && me.milDone ? '' : ''}${tot ? `<div class="small muted" style="margin-top:6px">내 대회 성적: ${esc(tot)}</div>` : ''}</div>` : ''}
@@ -1206,7 +1245,7 @@
       ${cardHTML(st)}
       ${f.oneLine ? `<div class="panel reveal one-line"><span class="tiny muted">커리어 한줄평</span><b>“${esc(f.oneLine)}”</b></div>` : ''}
       ${f.hof && f.hof.in ? `<div class="panel reveal hof-panel"><div class="hof-title">명예의 전당 헌액</div><div class="small">${esc(f.name)}의 이름이 명예의 전당에 새겨졌다.</div><div class="stamps" style="justify-content:center">${f.hof.why.map(w => `<span class="stamp gold">${esc(w)}</span>`).join('')}</div><button class="btn small" data-act="hof-replay" style="margin-top:10px">헌액식 다시 보기</button></div>`
-        : `<div class="panel reveal small muted" style="text-align:center">명예의 전당 헌액 기준에는 닿지 못했다.</div>`}
+        : `<div class="panel reveal small muted" style="text-align:center">명예의 전당 헌액 기준에는 닿지 못했다.${f.hof && f.hof.why && f.hof.why.length ? `<div style="margin-top:6px">달성한 기준 ${f.hof.why.length}개 · 헌액에는 ${f.hof.need || 2}개 이상 필요</div><div class="stamps" style="justify-content:center">${f.hof.why.map(w => `<span class="stamp">${esc(w)}</span>`).join('')}</div>` : ''}</div>`}
       <div class="panel reveal" id="share-src">
         <div class="big-score"><span>CAREER SCORE</span><b class="num">${f.score}</b>
           ${pct != null ? `<span class="pct-badge">전체 커리어 대비 상위 ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</span>` : `<span class="tiny muted" id="pct-wait">비교 데이터 만드는 중…</span>`}
@@ -1340,7 +1379,7 @@
   // 시즌별 기록 — 타자: 타율·안타·홈런·OPS(+타석) / 투수: ERA·탈삼진·승·홀드·세이브·이닝 / 공통: 나이·리그·1군/2군·WAR
   function seasonLog(st) {
     const r3 = x => Math.round(x * 1000) / 1000, r2 = x => Math.round(x * 100) / 100;
-    return st.hist.filter(h => (h.bat && h.bat.PA) || (h.pit && h.pit.outs)).slice(0, 30).map(h => {
+    return st.hist.filter(h => (h.bat && h.bat.PA) || (h.pit && h.pit.outs) || h.inj).slice(0, 30).map(h => {
       const o = { age: h.age, lg: h.lg || null, lv: (h.bat && h.bat.fut) || (h.pit && h.pit.fut) ? '2군' : (h.lvl === '1군' || h.lvl === '2군' ? h.lvl : '아마') };
       if (h.war != null) o.war = Math.round(h.war * 10) / 10;
       const b = h.bat; if (b && b.PA) {
@@ -1348,7 +1387,7 @@
         o.b = { pa: Math.round(b.PA), avg: r3(avg), h: Math.round(b.H), hr: Math.round(b.HR), ops: r3(obp + slg) };
       }
       const p = h.pit; if (p && p.outs) {
-        o.p = { ip: Math.floor(p.outs / 3) + (p.outs % 3) / 10, era: r2(p.ER * 27 / p.outs), k: Math.round(p.K), w: p.W || 0, hld: p.HLD || 0, sv: p.SV || 0 };
+        o.p = { ip: Math.floor(Math.round(p.outs) / 3) + (Math.round(p.outs) % 3) / 10, era: r2(p.ER * 27 / p.outs), k: Math.round(p.K), w: p.W || 0, hld: p.HLD || 0, sv: p.SV || 0 };
       }
       return o;
     });
@@ -1439,13 +1478,14 @@
     const tableOf = P => {
       const wk = tw ? (P ? 'warP' : 'warB') : 'war';
       const rows = st.hist.filter(h => h.war != null && (P ? h.pit && !h.pit.fut : h.bat && !h.bat.fut)).slice(-30).map(h => {
-        const tm = String(h.team).slice(0, 6), w = h[wk] != null ? f1(h[wk]) : tw ? '-' : f1(h.war);
-        if (P) { const p = h.pit; return [String(h.year).slice(2), tm, p.G || 0, p.W || 0, p.L || 0, p.SV || 0, ip(p), f2(Sim.ERA(p)), p.K, w]; }
-        const b = h.bat; return [String(h.year).slice(2), tm, b.G || '-', r3(Sim.AVG(b)), b.HR, b.RBI, b.SB, r3(Sim.OPS(b)), w];
+        const tm = String(h.team).slice(0, 5), w = h[wk] != null ? f1(h[wk]) : tw ? '-' : f1(h.war);
+        // 62차: 카드 기록표 순서 — 투수: 연도·팀·ERA·경기·승·패·세이브·홀드·이닝·탈삼진·WAR / 타자: 연도·팀·경기·타율·타수·안타·홈런·타점·도루·출루율·OPS·WAR
+        if (P) { const p = h.pit; return [String(h.year).slice(2), tm, p.outs ? f2(Sim.ERA(p)) : '-', p.G || 0, p.W || 0, p.L || 0, p.SV || 0, p.HLD || 0, ip(p), p.K || 0, w]; }
+        const b = h.bat; return [String(h.year).slice(2), tm, b.G || 0, b.PA ? r3(Sim.AVG(b)) : '-', b.AB || 0, b.H || 0, b.HR || 0, b.RBI || 0, b.SB || 0, b.PA ? r3(Sim.OBP(b)) : '-', b.PA ? r3(Sim.OPS(b)) : '-', w];
       });
       const t = P ? f.pit : f.bat, tw2 = f1(tw ? (P ? f.warP : f.warB) : f.war);
-      const total = P ? (t.outs ? ['통산', '', t.G, t.W, t.L, t.SV, ip(t), f2(Sim.ERA(t)), t.K, tw2] : null)
-        : (t.PA ? ['통산', '', t.G, r3(Sim.AVG(t)), t.HR, t.RBI, t.SB, r3(Sim.OPS(t)), tw2] : null);
+      const total = P ? (t.outs ? ['통산', '', f2(Sim.ERA(t)), t.G, t.W, t.L, t.SV, t.HLD || 0, ip(t), t.K, tw2] : null)
+        : (t.PA ? ['통산', '', t.G, r3(Sim.AVG(t)), t.AB, t.H, t.HR, t.RBI, t.SB, r3(Sim.OBP(t)), r3(Sim.OPS(t)), tw2] : null);
       return { rows, total };
     };
     const { rows, total } = tableOf(isP);
@@ -1459,7 +1499,7 @@
       // 57차: 이도류는 앞면에 주 능력치/반대쪽 능력치를 한 줄에 함께 (막대 = 주, 세로선 = 반대쪽)
       stats: tw ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
         : Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]),
-      twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total,
+      twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total, cv: 2,
       aw: mergeAw(f.awList || []).slice(0, 12), teams: (f.teams || []).join(' → ').slice(0, 44),
       ...(pt ? { rowsP: pt.rows, totalP: pt.total } : {}),
     };
@@ -1557,10 +1597,15 @@
       c.fillStyle = '#1b2233'; c.font = '900 30px sans-serif'; c.fillText(`${d.name}  #${d.num}`, BX + 40, G + 76);
       c.font = '600 18px sans-serif'; c.fillStyle = '#4a5163'; c.fillText(title, BX + 40, G + 106);
       c.fillStyle = '#1b2233'; c.fillRect(BX + 40, G + 118, CW - 80, 3);
-      const cols = isP ? ['연', '팀', 'G', 'W', 'L', 'SV', 'IP', 'ERA', 'K', 'WAR'] : ['연', '팀', 'G', 'AVG', 'HR', 'RBI', 'SB', 'OPS', 'WAR'];
-      const cx = isP ? [0, 44, 150, 196, 236, 276, 322, 386, 446, 500] : [0, 44, 160, 214, 278, 322, 372, 418, 494];
-      const line = (vals, y, bold) => { c.font = `${bold ? 800 : 600} 16px sans-serif`; vals.forEach((t, i) => c.fillText(String(t), BX + 44 + cx[i], y)); };
-      c.fillStyle = '#858a96'; line(cols, G + 150, true);
+      // 62차(cv 2): 한글 머리글 · 요청 순서. 예전에 저장된 카드(cv 없음)는 예전 칸 순서 그대로 그린다
+      const v2 = d.cv >= 2;
+      const cols = v2 ? (isP ? ['연도', '팀', 'ERA', '경기', '승', '패', '세이브', '홀드', '이닝', '탈삼진', 'WAR'] : ['연도', '팀', '경기', '타율', '타수', '안타', '홈런', '타점', '도루', '출루율', 'OPS', 'WAR'])
+        : isP ? ['연도', '팀', '경기', '승', '패', '세이브', '이닝', 'ERA', '탈삼진', 'WAR'] : ['연도', '팀', '경기', '타율', '홈런', '타점', '도루', 'OPS', 'WAR'];
+      const cx = v2 ? (isP ? [0, 36, 118, 166, 204, 236, 268, 316, 356, 408, 462] : [0, 36, 118, 152, 196, 236, 274, 310, 348, 384, 432, 476])
+        : isP ? [0, 44, 150, 196, 236, 276, 322, 386, 446, 500] : [0, 44, 160, 214, 278, 322, 372, 418, 494];
+      const fs = v2 ? 14 : 16;
+      const line = (vals, y, bold, head) => { c.font = `${bold ? 800 : 600} ${head && v2 ? 13 : fs}px sans-serif`; vals.forEach((t, i) => c.fillText(String(t), BX + 44 + cx[i], y)); };
+      c.fillStyle = '#858a96'; line(cols, G + 150, true, true);
       let y = G + 180;
       c.fillStyle = '#1b2233';
       for (const r of rows || []) { line(r, y); y += 22; }
@@ -1709,6 +1754,7 @@
       case 'rossort-b': App.rosBat = v; render(); break;
       case 'rossort-p': App.rosPit = v; render(); break;
       case 'compkey': App.compKey = v; render(); break;
+      case 'lu-tab': App.lu.tab = v; render(); break;
       case 'admin': if (!App.admin) break; App.dev = !App.dev; store.set(KEY_DEV, App.dev); render(); break;
       case 'play': playSeason(); break;
       case 'next-event': showEvent(); break;

@@ -39,7 +39,8 @@ const Sim = (function () {
       // 17차: 유망 잠재력 58~75 → 60~79
       // 19차: 등급 비율 → 15/30/50/5
       // 60차: 등급 비율 → 8/24/58/10
-      ['역대급', 0.08, 90, 99], ['특급', 0.24, 76, 89], ['유망', 0.58, 60, 79], ['평범', 0.10, 45, 57]],
+      // 62차: 범위 → 90~99 / 76~95 / 60~80 / 45~60 (등급끼리 조금씩 겹친다)
+      ['역대급', 0.08, 90, 99], ['특급', 0.24, 76, 95], ['유망', 0.58, 60, 80], ['평범', 0.10, 45, 60]],
     paSpread: 8,
     // 4차 패치: iron 36→35, long 34→33, 하락 가속 추가 (통산 WAR 상위권이 41세에도 5~8 WAR를 찍던 문제)
     aging: { iron: [35, 1, 2], long: [33, 1, 3], std: [32, 2, 4], early: [30, 3, 5] },
@@ -85,7 +86,9 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       { id: 'WBC', name: 'WBC', from: 2029, every: 3, ovr: 59, war: 2.8, warOnly: 4.2, win: 0.15, exempt: false, medal: '우승' },
     ],
     // 23차: 명예의 전당 헌액 기준 (하나라도 달성). peakOVR은 화면 표시 눈금
-    hof: { war: 62, mvp: 2, titles: 4, titlesWar: 40, peakOVR: 95, peakWar: 45, hits: 2500, hr: 420, wins: 190, saves: 350, ks: 2600, twoWay: 3 },
+    // 62차: 헌액 난이도 상향 — 아래 기준 중 need개 이상을 채워야 헌액. 기준 추가(골든글러브·개인 타이틀·시리즈 MVP·올해의 투수상·국제대회 우승·시즌 WAR·통산 OPS/ERA·도루·메이저리그 시즌)
+    hof: { need: 2, war: 62, mvp: 2, titles: 4, titlesWar: 40, peakOVR: 95, peakWar: 45, hits: 2500, hr: 420, wins: 190, saves: 350, ks: 2600, twoWay: 3,
+      gg: 6, title: 6, smvp: 2, poy: 2, intlGold: 2, seasonWar: 9, ops: [5000, 0.900], era: [4500, 3.00], sb: 400, mlb: 8 },
     // 11차: 마무리 지정 선수의 마무리 자리 우선 보정, 보직 전환 제안 확률
     // 43차: 보직 제안 확대 — toSP 0.35→0.5, toCL 0.4→0.5. spN 선발↔불펜 제안 횟수(1~2→2~3), gap 간격(3→2년), spSta 체력(50→45), spGap 5선발 대비 여유(1→3)
     //       마무리 제안은 따로: clGap 2년, clEra 리그 ERA보다 이만큼 좋으면(0.8→0.5), clVal 팀 최고 불펜 지수와 이만큼 차이 안이면
@@ -153,7 +156,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   const PIT = ['vel', 'ctl', 'stf', 'brk', 'sta', 'men'];
   const ALL = BAT.concat(PIT);
   const LABEL = { con: '컨택', pow: '파워', eye: '선구안', spd: '주루', def: '수비', arm: '어깨', vel: '구속', ctl: '제구', stf: '구위', brk: '변화구', sta: '체력', men: '멘탈' };
-  const POSNAME = { C: '포수', '1B': '1루수', '2B': '2루수', '3B': '3루수', SS: '유격수', OF: '외야수', DH: '지명타자', SP: '선발투수', RP: '불펜투수' };
+  const POSNAME = { C: '포수', '1B': '1루수', '2B': '2루수', '3B': '3루수', SS: '유격수', OF: '외야수', CF: '중견수', LF: '좌익수', RF: '우익수', DH: '지명타자', SP: '선발투수', RP: '불펜투수' };
+  // 62차: 외야는 중견수·좌익수·우익수로 부른다. 계산·기록은 모두 예전 외야수(OF) 그대로 — 이름표만 다르다
+  const OF_POS = ['CF', 'LF', 'RF'];
+  function posName(me) { return me.pos === 'OF' && me.ofPos ? POSNAME[me.ofPos] : POSNAME[me.pos]; }
   const X = [20, 50, 80, 99];
   // 99를 넘는 값(내 역대급 선수의 전성기·컨디션)은 80~99 구간 기울기 그대로 연장. 다른 선수는 99가 상한이라 영향 없음
   function L(v, ys) {
@@ -225,6 +231,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   function OPS(s) { return OBP(s) + SLG(s); }
   function ERA(s) { return s.outs ? s.ER * 27 / s.outs : 0; }
   function IP(s) { return s.outs / 3; }
+  // 62차: 이닝 표기는 실제 야구처럼 (6과 1/3이닝 → 6.1, 2/3 → 6.2)
+  function ipTxt(s) { const o = Math.round(s && s.outs || 0); return Math.floor(o / 3) + (o % 3 ? '.' + (o % 3) : ''); }
 
   function finishBat(s, p, sbForm, rm, bm) {
     s.AB = s.PA - s.BB;
@@ -392,6 +400,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     if (!st.lg.cid) st.lg.cid = 'KBO';
     if (st.me && st.me.milDone == null) st.me.milDone = true;   // 병역 기능 이전 저장 게임은 해결된 것으로
     if (st.car && st.car.achPts == null) st.car.achPts = legacyAch(st);   // 52차 이전 저장: 지금까지의 업적 점수
+    if (st.me && st.me.pos === 'OF' && !st.me.ofPos) st.me.ofPos = st.me.flags && st.me.flags.cornerOF ? 'LF' : 'CF';   // 62차 이전 저장: 외야수 → 중견수(코너 전향은 좌익수)
     st.L = st.L || {};
     for (const cid of ['FUT', 'UNIV', 'NPB', 'MLB']) if (!st.L[cid] && st.lg.cid !== cid) st.L[cid] = makeOtherLeague(st, cid);
     for (const L of [st.lg, st.home].concat(Object.values(st.L))) if (L) padRosters(st, L, cfgOf(L));
@@ -636,7 +645,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     st.lg.cid = 'KBO';
     ensureLeagues(st);
     const me = {
-      name: setup.name || '홍길동', num: setup.num || 1, bats: setup.bats || 'R', throws: setup.throws || 'R', role: setup.role, pos: setup.pos,
+      name: setup.name || '홍길동', num: setup.num || 1, bats: setup.bats || 'R', throws: setup.throws || 'R', role: setup.role,
+      pos: OF_POS.indexOf(setup.pos) >= 0 ? 'OF' : setup.pos, ofPos: OF_POS.indexOf(setup.pos) >= 0 ? setup.pos : setup.pos === 'OF' ? 'CF' : null,
       age: 17, r: Object.assign({}, setup.r), school: setup.school || 'mid', hometown: setup.hometown || R.pick(DATA.teams).id, hsName: setup.hsName || null,
       avatar: setup.avatar || (seed % 9973),
       trainFocus: (setup.trainFocus || []).slice(0, 2), tfChanges: BAL.focusChange.times, tf2: null,
@@ -1456,8 +1466,11 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   }
 
   // ---------- 프로 시즌 마무리 (내 선수 결과 정리) ----------
+  // 62차: 2군 이름은 리그마다 — KBO 2군(퓨처스), 메이저리그 2군(마이너), 일본 2군
+  function minorLabel(st) { const c = cfgOf(st.lg) || {}; return c.id === 'MLB' ? '2군(마이너)' : c.id === 'NPB' ? '2군' : '2군(퓨처스)'; }
   function proFinish(st, res, m, stand, post, aw, leaders, myWAR) {
     const me = st.me, car = st.car;
+    res.minor = minorLabel(st);
     const team = teamById(st, me.team);
     const ts = stand.find(s => s.id === me.team);
     res.team = { name: team.name, record: `${ts.wins}승 ${ts.losses}패 · ${ts.rank}위`, tourn: [] };
@@ -1476,7 +1489,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const parts = [];
     const firstSeg = m.segs.findIndex(s => s === 'S' || s === 'B');
     if (m.segs.every(s => s === 'I')) parts.push('부상으로 시즌 전체 결장');
-    else if (m.segs.every(s => s === 'F' || s === 'I')) parts.push('시즌 내내 2군(퓨처스)');
+    else if (m.segs.every(s => s === 'F' || s === 'I')) parts.push(`시즌 내내 ${minorLabel(st)}`);
     else {
       if (firstSeg > 0) parts.push(`${MON[firstSeg]} 1군 콜업`);
       else parts.push('개막 1군');
@@ -1536,7 +1549,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     res.news = fanNews(st, res);
     peakScene(st, res, myWAR, segs1);
     // 히스토리
-    st.hist.push({ year: st.year, age: me.age, team: team.name, teamId: team.id, lg: cfgOf(st.lg).id, pos: me.twoWay ? 'TW' : me.pos, lvl: segs1 >= 1 ? '1군' : '2군', def: m.def || null, futBat: b2.PA ? b2 : null, futPit: p2.outs ? p2 : null, psBat: post.me && post.me.bat || null, psPit: post.me && post.me.pit || null, bat: b1.PA ? b1 : (b2.PA ? Object.assign({ fut: true }, b2) : null), pit: p1.outs ? p1 : (p2.outs ? Object.assign({ fut: true }, p2) : null), war: myWAR, warB: me.twoWay ? m.warB : undefined, warP: me.twoWay ? m.warP : undefined, note: res.awards.join(', ') });
+    // 62차: 부상으로 시즌을 통째로 날리면 기록표에 0으로 남긴다 (예전엔 그 해가 기록표에서 빠졌다)
+    const injAll = m.segs.every(s => s === 'I') && !b1.PA && !p1.outs && !b2.PA && !p2.outs;
+    const zB = injAll && (me.role === 'B' || me.twoWay) ? emptyBat() : null, zP = injAll && (me.role === 'P' || me.twoWay) ? emptyPit() : null;
+    st.hist.push({ year: st.year, age: me.age, team: team.name, teamId: team.id, lg: cfgOf(st.lg).id, pos: me.twoWay ? 'TW' : me.pos, ofPos: me.pos === 'OF' ? me.ofPos || null : undefined, lvl: segs1 >= 1 ? '1군' : '2군', inj: injAll || undefined, def: m.def || null, futBat: b2.PA ? b2 : null, futPit: p2.outs ? p2 : null, psBat: post.me && post.me.bat || null, psPit: post.me && post.me.pit || null, bat: b1.PA ? b1 : (b2.PA ? Object.assign({ fut: true }, b2) : zB), pit: p1.outs ? p1 : (p2.outs ? Object.assign({ fut: true }, p2) : zP), war: myWAR, warB: me.twoWay ? m.warB : undefined, warP: me.twoWay ? m.warP : undefined, note: res.awards.join(', ') });
     me.lastSeason = { war: myWAR, warB: m.warB, warP: m.warP, avg: b1.PA >= 100 ? AVG(b1) : null, ops: b1.PA >= 100 ? OPS(b1) : null, era: p1.outs >= 90 ? ERA(p1) : null, starter: segsS >= 2 || (me.role === 'P' && m.pacc.su >= 2), firstSegs: segs1, injured: !!m.injText, bigInjury: m.segs.filter(s => s === 'I').length >= 2, cl: m.pacc.cl, su: m.pacc.su, gs: p1.GS || 0 };
     // 25차: 시즌 대부분을 마무리로 뛰었다면 이미 마무리 투수로 본다 (결산에서 "마무리 맡아라" 제안이 뒤늦게 나오던 문제)
     if (me.role === 'P' && !me.twoWay && me.pos === 'RP' && m.pacc.cl >= 2 && !me.flags.closer) me.flags.closer = true;
@@ -1581,7 +1597,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     if (!rv.last) return null;
     return { name: rv.name, team: teamById(st, rv.team).name, war: rv.lastWAR, line: rv.last.bat ? fmtBatShort(rv.last.bat) : fmtPitShort(rv.last.pit), myWar: res.war };
   }
-  function fmtBatShort(s) { return `${rate3(AVG(s))} ${s.HR}홈런 ${s.RBI}타점 OPS ${rate3(OPS(s))}`; }
+  function fmtBatShort(s) { return `${rate3(AVG(s))} ${s.H}안타 ${s.HR}홈런 ${s.RBI}타점 OPS ${rate3(OPS(s))}`; }   // 62차: 안타 수 추가
   function fmtPitShort(s) { return `${s.W}승 ${s.L}패 ${s.SV ? s.SV + '세이브 ' : ''}ERA ${ERA(s).toFixed(2)} ${s.K}K`; }
   function rate3(v) { return v.toFixed(3).replace(/^0/, ''); }
   // ---------- 전성기 연출 ----------
@@ -1701,7 +1717,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     });
     if (res.ovr >= (st.car.peak || 0)) { st.car.peak = res.ovr; st.car.peakR = Object.assign({}, me.r); }
     // 돈
-    if (me.stage === 'pro') { me.earnings += me.salary; }
+    if (me.stage === 'pro') { me.earnings += Math.round(me.salary * (1 - AGENCY[agencyOf(me).tier].fee)); }   // 62차: 에이전시 수수료를 뗀 금액
     // 이도류 제안 체크 (고교)
     if (me.stage === 'hs' && !me.twOffered && BAL.twoWay.offerTiers.indexOf(me.tier) >= 0 && avgKeys(me.r, oppKeys(me)) >= BAL.twoWay.offerMin && R.chance(BAL.twoWay.offerP)) { me.twOffered = true; queue(st, 'twoway'); }
     // 진행 단계 전환
@@ -1804,6 +1820,35 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   }
   // 27차: FA 조건 문구 — 계약금이 있으면 총액(계약금+연봉×년)으로
   function faTerms(o) { return o.bon ? `${o.yrs}년 총액 ${man(o.bon + o.sal * o.yrs)} (계약금 ${man(o.bon)}, 연 ${man(o.sal)})` : `${o.yrs}년 연 ${man(o.sal)}`; }
+  // ---------- 62차: 에이전시와 연봉 협상 ----------
+  // 에이전시 3단계: 기존(개인·소형) → 중형 → 대형. 협상력(skill)이 높을수록 연봉 인상·FA 몸값에 유리하지만 수수료가 크다.
+  //   중형·대형은 연봉(만원)이나 화제성이 기준을 넘으면 겨울에 영입 제안이 온다.
+  const AGENCY = {
+    small: { name: '기존 에이전시', skill: [30, 50], fee: 0.03 },
+    mid: { name: '중형 에이전시', skill: [52, 70], fee: 0.05, sal: 10000, pop: 30 },
+    big: { name: '대형 에이전시', skill: [72, 95], fee: 0.08, sal: 30000, pop: 60 },
+  };
+  function agencyOf(me) {
+    if (!me.agency) me.agency = me.flags && me.flags.bigAgent ? { tier: 'big', skill: 80 } : { tier: 'small', skill: 40 };   // 예전 저장: 대형 에이전시로 옮겼던 선수는 대형
+    return me.agency;
+  }
+  function agentGrade(skill) { return skill >= 82 ? 'S' : skill >= 66 ? 'A' : skill >= 50 ? 'B' : 'C'; }
+  // FA 몸값 배율 (협상력 30 ≈ 0.99, 50 ≈ 1.05, 70 ≈ 1.11, 95 ≈ 1.19)
+  function agentMul(me) { return 0.9 + agencyOf(me).skill * 0.003; }
+  // 협상 지렛대: 성적(시장가치 ÷ 제시액) · 팬들의 관심(화제성) · 명성(업적) · 에이전트 협상력
+  function salaryLeverage(st, offer) {
+    const me = st.me, ag = agencyOf(me), sm = cfgOf(st.lg).salMul || 1;
+    const mv = marketValue(me) * sm;
+    const perfN = clamp((mv / Math.max(1, offer) - 0.8) / 0.8, 0, 1);
+    const popN = clamp((me.pop || 0) / 60, 0, 1);
+    const fameN = clamp((st.car.achPts || 0) / 250, 0, 1);
+    const agN = ag.skill / 100;
+    const lev = 0.35 * perfN + 0.2 * popN + 0.15 * fameN + 0.3 * agN;
+    const p10 = clamp(0.2 + 0.7 * lev, 0.1, 0.92), p25 = clamp(-0.1 + 0.8 * lev, 0.03, 0.75);
+    const word = p => p >= 0.7 ? '해볼 만하다' : p >= 0.45 ? '반반' : p >= 0.25 ? '쉽지 않다' : '어렵다';
+    const lvl = x => x >= 0.66 ? '높음' : x >= 0.33 ? '보통' : '낮음';
+    return { p10, p25, w10: word(p10), w25: word(p25), perf: lvl(perfN), pop: lvl(popN), fame: lvl(fameN), agent: agentGrade(ag.skill) };
+  }
   function weightedWAR(me) { const h = me.warHist || []; const a = h.length ? h[h.length - 1] : 0, b = h.length > 1 ? h[h.length - 2] : a; return (0.6 * a + 0.4 * b) * warW(me); }
 
   function proWinter(st, res) {
@@ -1873,7 +1918,13 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         else if (me.proSeasons === TR.weakSeasons && !me.flags.trade2 && R.chance(TR.weakP)) { me.flags.trade2 = true; queue(st, 'clubTrade', { weak: true }); }
       }
     }
+    // 62차: 에이전시 영입 제안 — 연봉·화제성이 기준을 넘으면 한 단계 위 에이전시가 2년 간격으로 찾아온다
+    {
+      const ag = agencyOf(me), nxt = ag.tier === 'small' ? 'mid' : ag.tier === 'mid' ? 'big' : null, N = nxt && AGENCY[nxt];
+      if (N && !leaving && team && (me.salary >= N.sal || (me.pop || 0) >= N.pop) && (me.flags.agencyYear || 0) <= st.year - 2 && R.chance(0.5)) { me.flags.agencyYear = st.year; queue(st, 'agency', { tier: nxt }); }
+    }
     // 계약
+    res.salaryPrev = me.salary;
     const sm = cfgOf(st.lg).salMul || 1;
     const v = marketValue(me) * sm;
     if (me.contract && me.contract.until >= st.year) {
@@ -1888,6 +1939,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         ns = Math.max(ns, me.salary * 0.7, BAL.minSal * sm);
         if (me.flags.ytBump) { ns *= 1.05; delete me.flags.ytBump; }
         me.salary = Math.round(ns / 100) * 100;
+        // 62차: 구단 제시액을 바로 확정하지 않고 협상 테이블에 올린다 (수락·인상 요구·연봉조정)
+        if (!leaving && team && !st.done) queue(st, 'salary', { offer: me.salary, prev: res.salaryPrev || null });
         // 비FA 다년계약 제안
         const h = me.warHist || [];
         if (me.age >= 25 && h.length >= 2 && h[h.length - 1] >= 3 && h[h.length - 2] >= 3 && !me.flags.extDone && me.svc < (me.faAt || 99) - 1) queue(st, 'extension');
@@ -1905,8 +1958,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       res.playCoef = 0;
       // 17차: 현역 복무 중 체력 훈련 — 투수는 체력·멘탈, 타자는 어깨·주루가 오르고 나머지 주 능력치는 떨어진다 (매년)
       // 52차: 올라가는 능력치 +2 → +3, 나머지 −1 → −2
-      const up = me.role === 'P' ? ['sta', 'men'] : ['arm', 'spd'];
+      // 62차: 몸이 단단해지는 쪽만 오른다 — 타자는 파워·어깨·멘탈, 투수는 구속·구위·체력. 나머지(감각 능력치)는 떨어진다
+      const up = me.role === 'P' ? ['vel', 'stf', 'sta'] : ['pow', 'arm'];
       for (const k of mainKeys(me)) addR(me, k, up.indexOf(k) >= 0 ? 3 : -2);
+      if (me.role !== 'P') addR(me, 'men', 3);
     } else {
       const e = effR(me);
       res.statusText = `상무 ${yr}년차 · 퓨처스리그 출전`;
@@ -1974,8 +2029,13 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       if (isP) {
         start = sp && (gi === 1 || stage !== '조별리그' && gi % 2 === 0);
         if (start || (!sp && R.chance(0.6))) {
-          ps = simPitch(pR, start ? Math.round(pR.ipS * 3 * 0.85) : 3, pR.men); addLine(tot.pit, ps); tot.pit.GS = (tot.pit.GS || 0) + (start ? 1 : 0);
-          line.push(`${IP(ps).toFixed(1).replace('.0', '')}이닝 ${ps.ER}실점 ${ps.K}K`); bonus += ps.ER === 0 ? (start ? 0.06 : 0.03) : ps.ER >= 3 ? -0.05 : 0;
+          // 62차: 등판마다 이닝이 달라진다 — 선발은 기대 이닝 ± 1이닝 남짓(투구 수·컨디션), 구원은 1/3~2이닝
+          const outs = start ? clamp(Math.round(pR.ipS * 3 * 0.85 + R.gauss() * 3.5), 7, 27) : R.weighted([1, 2, 3, 3, 3, 4, 5, 6], () => 1);
+          ps = simPitch(pR, outs, pR.men);
+          // 대량 실점하면 일찍 강판 — 실점이 많을수록 아웃카운트를 덜 잡고 내려간다
+          if (start && ps.ER >= 4 && ps.outs > 9) { const cut = Math.max(7, ps.outs - R.int(3, 7)); ps.outs = cut; }
+          addLine(tot.pit, ps); tot.pit.GS = (tot.pit.GS || 0) + (start ? 1 : 0);
+          line.push(`${ipTxt(ps)}이닝 ${ps.ER}실점 ${ps.K}K`); bonus += ps.ER === 0 ? (start ? 0.06 : 0.03) : ps.ER >= 3 ? -0.05 : 0;
         }
       }
       const win = R() < clamp((INTL_OPP[opp] || 0.5) + bonus + (F.boost || 0), 0.05, 0.97);
@@ -2182,21 +2242,42 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     return Math.max(0, Math.round(s));   // 41차: 통산 WAR가 마이너스여도 점수는 0점 아래로 내려가지 않는다
   }
   function scoreParts(st) { const ach = st.car.achPts == null ? legacyAch(st) : st.car.achPts; return { war: Math.round(warPoints(st)), ach: Math.round(ach * BAL.score.achK) }; }
-  // 23차: 명예의 전당 — 아래 중 하나라도 달성하면 헌액 (BAL.hof)
+  // 23차: 명예의 전당 (BAL.hof). 62차: 기준 목록 중 need개(2개) 이상을 채워야 헌액
+  //   hofGoals: 화면에 보여 줄 기준 목록 — t 기준 이름, cur 현재 값, ok 달성 여부, why 헌액 사유 문구
+  function hofGoals(st) {
+    const car = st.car, H = BAL.hof, a = car.aw || {}, b = car.bat || {}, p = car.pit || {};
+    const war = car.war || 0, peakOVR = disp(car.peak || 0);
+    const golds = (car.intlRec || []).filter(t => t.result === '금메달' || t.result === '우승').length;
+    const bestWar = st.hist.reduce((m, h) => h.war != null && h.war > m ? h.war : m, 0);
+    const mlbN = st.hist.filter(h => h.lg === 'MLB' && h.lvl === '1군').length;
+    const ops = b.PA ? OPS(b) : 0, era = p.outs ? ERA(p) : 0;
+    const G = [
+      { t: `통산 WAR ${H.war}`, cur: war.toFixed(1), ok: war >= H.war, why: `통산 WAR ${war.toFixed(1)}` },
+      { t: `MVP ${H.mvp}회`, cur: `${a.MVP || 0}회`, ok: (a.MVP || 0) >= H.mvp, why: `MVP ${a.MVP}회` },
+      { t: `우승 ${H.titles}회 + 통산 WAR ${H.titlesWar}`, cur: `${a.KS || 0}회 · WAR ${war.toFixed(1)}`, ok: (a.KS || 0) >= H.titles && war >= H.titlesWar, why: `우승 ${a.KS}회 · WAR ${war.toFixed(1)}` },
+      { t: `최고 OVR ${H.peakOVR} + 통산 WAR ${H.peakWar}`, cur: `OVR ${peakOVR}`, ok: peakOVR >= H.peakOVR && war >= H.peakWar, why: `최고 OVR ${peakOVR}` },
+      { t: `시즌 WAR ${H.seasonWar}`, cur: bestWar.toFixed(1), ok: bestWar >= H.seasonWar, why: `시즌 WAR ${bestWar.toFixed(1)}` },
+      { t: `골든글러브 ${H.gg}회`, cur: `${a.GG || 0}회`, ok: (a.GG || 0) >= H.gg, why: `골든글러브 ${a.GG}회` },
+      { t: `개인 타이틀 ${H.title}회`, cur: `${a.TITLE || 0}회`, ok: (a.TITLE || 0) >= H.title, why: `개인 타이틀 ${a.TITLE}회` },
+      { t: `시리즈 MVP ${H.smvp}회`, cur: `${a.KSMVP || 0}회`, ok: (a.KSMVP || 0) >= H.smvp, why: `시리즈 MVP ${a.KSMVP}회` },
+      { t: `국제대회 금메달·우승 ${H.intlGold}회`, cur: `${golds}회`, ok: golds >= H.intlGold, why: `국제대회 금메달·우승 ${golds}회` },
+      { t: `메이저리그 1군 ${H.mlb}시즌`, cur: `${mlbN}시즌`, ok: mlbN >= H.mlb, why: `메이저리그 ${mlbN}시즌` },
+      { t: `이도류 시즌 ${H.twoWay}회`, cur: `${car.twoWaySeasons || 0}회`, ok: (car.twoWaySeasons || 0) >= H.twoWay, why: `이도류 시즌 ${car.twoWaySeasons}회`, k: 'tw' },
+      { t: `통산 ${H.hits}안타`, cur: `${b.H || 0}안타`, ok: (b.H || 0) >= H.hits, why: `통산 ${b.H}안타`, k: 'B' },
+      { t: `통산 ${H.hr}홈런`, cur: `${b.HR || 0}홈런`, ok: (b.HR || 0) >= H.hr, why: `통산 ${b.HR}홈런`, k: 'B' },
+      { t: `통산 ${H.sb}도루`, cur: `${b.SB || 0}도루`, ok: (b.SB || 0) >= H.sb, why: `통산 ${b.SB}도루`, k: 'B' },
+      { t: `통산 OPS ${rate3(H.ops[1])} (${H.ops[0]}타석 이상)`, cur: b.PA ? `${rate3(ops)} · ${b.PA}타석` : '-', ok: (b.PA || 0) >= H.ops[0] && ops >= H.ops[1], why: `통산 OPS ${rate3(ops)}`, k: 'B' },
+      { t: `통산 ${H.wins}승`, cur: `${p.W || 0}승`, ok: (p.W || 0) >= H.wins, why: `통산 ${p.W}승`, k: 'P' },
+      { t: `통산 ${H.saves}세이브`, cur: `${p.SV || 0}세이브`, ok: (p.SV || 0) >= H.saves, why: `통산 ${p.SV}세이브`, k: 'P' },
+      { t: `통산 ${H.ks}탈삼진`, cur: `${p.K || 0}탈삼진`, ok: (p.K || 0) >= H.ks, why: `통산 ${p.K}탈삼진`, k: 'P' },
+      { t: `통산 ERA ${H.era[1].toFixed(2)} (${H.era[0] / 3}이닝 이상)`, cur: p.outs ? `${era.toFixed(2)} · ${ipTxt(p)}이닝` : '-', ok: (p.outs || 0) >= H.era[0] && era <= H.era[1], why: `통산 ERA ${era.toFixed(2)}`, k: 'P' },
+      { t: `올해의 투수상 ${H.poy}회`, cur: `${a.POY || 0}회`, ok: (a.POY || 0) >= H.poy, why: `올해의 투수상 ${a.POY}회`, k: 'P' },
+    ];
+    return G;
+  }
   function hofCheck(st) {
-    const me = st.me, car = st.car, H = BAL.hof, why = [];
-    const war = car.war, titles = car.aw.KS || 0, mvp = car.aw.MVP || 0, peakOVR = disp(car.peak || 0);
-    if (war >= H.war) why.push(`통산 WAR ${war.toFixed(1)}`);
-    if (mvp >= H.mvp) why.push(`MVP ${mvp}회`);
-    if (titles >= H.titles && war >= H.titlesWar) why.push(`우승 ${titles}회 · WAR ${war.toFixed(1)}`);
-    if (peakOVR >= H.peakOVR && war >= H.peakWar) why.push(`최고 OVR ${peakOVR}`);
-    if ((car.bat.H || 0) >= H.hits) why.push(`통산 ${car.bat.H}안타`);
-    if ((car.bat.HR || 0) >= H.hr) why.push(`통산 ${car.bat.HR}홈런`);
-    if ((car.pit.W || 0) >= H.wins) why.push(`통산 ${car.pit.W}승`);
-    if ((car.pit.SV || 0) >= H.saves) why.push(`통산 ${car.pit.SV}세이브`);
-    if ((car.pit.K || 0) >= H.ks) why.push(`통산 ${car.pit.K}탈삼진`);
-    if (car.twoWaySeasons >= H.twoWay) why.push(`이도류 시즌 ${car.twoWaySeasons}회`);
-    return { in: why.length > 0, why, year: st.year - 1 };
+    const H = BAL.hof, why = hofGoals(st).filter(g => g.ok).map(g => g.why);
+    return { in: why.length >= (H.need || 1), why, need: H.need || 1, year: st.year - 1 };
   }
   // 52차: 프로에서 가장 많이 뛴 팀·포지션 (1군 출전량 기준 — 타석 + 아웃카운트×1.5, 1군 기록이 없으면 2군 포함)
   function mainTeamPos(st) {
@@ -2206,7 +2287,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const w = use.length ? vol : () => 1;
     if (!use.length) use = rows;
     const tally = (keyOf) => { const m = {}; for (const h of use) { const k = keyOf(h); if (k) m[k] = (m[k] || 0) + w(h); } return Object.keys(m).sort((a, b) => m[b] - m[a])[0] || null; };
-    const tid = tally(h => h.teamId), pos = tally(h => h.pos) || (me.twoWay ? 'TW' : me.pos);
+    const tid = tally(h => h.teamId), pos = tally(h => h.pos === 'OF' ? h.ofPos || me.ofPos || 'OF' : h.pos) || (me.twoWay ? 'TW' : me.pos === 'OF' && me.ofPos ? me.ofPos : me.pos);
     const row = use.find(h => h.teamId === tid);
     return { teamId: tid || me.team || null, teamName: row ? row.team : (me.team ? teamName(st, me.team) : ''), pos };
   }
@@ -2644,7 +2725,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     {
       id: 'fa', forced: true, cat: '커리어', who: '에이전트',
       prep: (st, me, c) => {
-        const ww = weightedWAR(me), v = marketValue(me) * (me.flags.bigAgent ? 1.15 : 1) * (cfgOf(st.lg).salMul || 1);
+        const ww = weightedWAR(me), v = marketValue(me) * agentMul(me) * (cfgOf(st.lg).salMul || 1);   // 62차: 에이전트 협상력
         // 52차: 제안 구단 수 확대 (0~1 → 1~2, 1~3 → 2~4, 3~5 → 4~6)
         const n = ww < WS(1) ? R.int(1, 2) : ww < WS(3) ? R.int(2, 4) : R.int(4, 6);
         const yrs = me.age <= 30 ? R.int(4, 6) : me.age <= 32 ? R.int(3, 4) : me.age <= 34 ? R.int(1, 3) : R.int(1, 2);
@@ -2667,21 +2748,30 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       ch: (st, me, c) => {
         const a = [], tn = id => teamName(st, id) + lastRankTxt(st, id);
         if (c.best) a.push(`최고 금액: ${tn(c.best.team)} ${faTerms(c.best)}`);
+        // 62차: 최고액 구단과 추가 협상 (성공하면 10~20% 더, 실패하면 그 구단이 발을 빼고 원소속 잔류 조건으로)
+        if (c.best && !me.abroad) { c.lev = salaryLeverage(st, c.best.sal); a.push(`에이전트에게 협상을 맡긴다: ${tn(c.best.team)}에 더 높은 금액 요구 (에이전트 판단: ${c.lev.w10}, 실패하면 원소속 잔류)`); }
         if (c.off2) a.push(`다른 제안: ${tn(c.off2.team)} ${faTerms(c.off2)}`);
         if (c.off3) a.push(`다른 제안: ${tn(c.off3.team)} ${faTerms(c.off3)}`);
         a.push(`원소속 잔류: ${tn(c.stay.team)} ${faTerms(c.stay)}`);
         if (c.home) a.push(`고향팀: ${tn(c.home.team)} ${faTerms(c.home)}`);
         if (c.kbo) a.push(`KBO 복귀: ${teamName(st, c.kbo.team)} ${faTerms(c.kbo)}`);
         (c.ab || []).forEach(o => a.push(`해외 FA · ${LCFG[o.cid].short}: ${teamName(st, o.team)}${lastRankTxt(st, o.team)} ${o.yrs}년 연 ${man(o.sal)}`));
-        c.opts = [c.best ? 'best' : null, c.off2 ? 'off2' : null, c.off3 ? 'off3' : null, 'stay', c.home ? 'home' : null, c.kbo ? 'kbo' : null].filter(Boolean).concat((c.ab || []).map((o, j) => 'ab' + j));
+        c.opts = [c.best ? 'best' : null, c.best && !me.abroad ? 'nego' : null, c.off2 ? 'off2' : null, c.off3 ? 'off3' : null, 'stay', c.home ? 'home' : null, c.kbo ? 'kbo' : null].filter(Boolean).concat((c.ab || []).map((o, j) => 'ab' + j));
         return a;
       },
       safe: 0,
       res: (st, me, i, c) => {
-        const k = c.opts[i];
+        let k = c.opts[i];
         if (/^ab\d/.test(k)) { const o = c.ab[+k.slice(2)]; goAbroad(st, o.cid, o.team, o.sal, o.yrs); me.pop += 10; return '해외 FA 계약. 새 무대가 기다린다.'; }
-        const o = c[k];
-        if (o.bon) { me.earnings += o.bon; me.pop += 2; }
+        let o = c[k], negoTxt = '';
+        if (k === 'nego') {
+          const p = c.lev ? c.lev.p10 : 0.5, u = R();
+          if (u < p) { const m = R.range(1.1, 1.2); o = Object.assign({}, c.best, { sal: Math.round(c.best.sal * m / 100) * 100, bon: c.best.bon ? Math.round(c.best.bon * m / 1000) * 1000 : 0 }); negoTxt = '에이전트가 판을 키웠다. 조건이 더 올라갔다! '; k = 'best'; }
+          else if (u < p + (1 - p) * 0.4) { o = c.best; negoTxt = '더 받아내진 못했지만 처음 조건은 지켰다. '; k = 'best'; }
+          else { o = c.stay; k = 'stay'; me.pop -= 2; negoTxt = `${teamName(st, c.best.team)}이(가) 협상에서 발을 뺐다. 결국 원소속 구단에 남는다. `; }
+        }
+        if (o.bon) { me.earnings += Math.round(o.bon * (1 - AGENCY[agencyOf(me).tier].fee)); me.pop += 2; }
+        if (negoTxt) story(st, `${me.age}세 FA, 에이전트에게 협상을 맡겼다.`);
         if (k === 'kbo') { returnKBO(st, o.team, o.sal, o.yrs); return '"돌아온 걸 환영한다." 팬들이 플래카드를 들었다.'; }
         if (k !== 'stay') { moveTeam(st, o.team); me.flags.adjust = true; }
         if (k === 'home') me.pop += 10;
@@ -2689,7 +2779,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         me.salary = o.sal; me.contract = { salary: o.sal, until: st.year + o.yrs - 1, kind: 'FA' };
         me.faAt = me.svc + Math.max(4, o.yrs);
         story(st, `${me.age}세 FA, ${tj(st, o.team, '과', '와')} ${faTerms(o)} 계약.`);
-        return k === 'best' ? '새 유니폼, 새 홈구장. 기자회견 플래시가 쏟아졌다.' : k === 'home' ? '어릴 적 응원하던 팀의 유니폼을 입었다.' : '"우리 팀에서 끝까지 함께하자." 팬들이 환호했다.';
+        return negoTxt + (k === 'best' ? '새 유니폼, 새 홈구장. 기자회견 플래시가 쏟아졌다.' : k === 'home' ? '어릴 적 응원하던 팀의 유니폼을 입었다.' : '"우리 팀에서 끝까지 함께하자." 팬들이 환호했다.');
       },
     },
     {
@@ -2703,7 +2793,38 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         return '"시장에서 제 가치를 확인해 보고 싶습니다."';
       },
     },
-    { id: 'camp', forced: true, cat: '입단', who: '수석코치', text: '첫 스프링캠프. 선배들 사이에서 눈에 띄려면 뭔가 보여줘야 한다.', ch: ['무리해서라도 어필한다', '내 페이스대로 간다'], safe: 1,
+    // 62차: 연봉 협상 — 계약이 끝나면 구단 제시액이 오고, 수락하거나 인상을 요구하거나 연봉조정을 신청한다.
+    //   인상 성공 확률은 성적(시장가치 대비 제시액) · 팬들의 관심 · 명성 · 에이전트 협상력으로 정해진다 (salaryLeverage)
+    {
+      id: 'salary', forced: true, repeat: true, cat: '계약', who: '구단 운영팀',
+      prep: (st, me, c) => {
+        c.lev = salaryLeverage(st, c.offer);
+        c.ask10 = Math.round(c.offer * 1.1 / 100) * 100; c.ask25 = Math.round(c.offer * 1.25 / 100) * 100;
+        c.arb = me.svc >= 3 && me.lastSeason && me.lastSeason.war >= WS(2);
+        c.mv = Math.round(marketValue(me) * (cfgOf(st.lg).salMul || 1) / 100) * 100;
+      },
+      text: (st, me, c) => `연봉 협상 테이블. 구단 제시액은 연 ${man(c.offer)}${c.prev ? ` (올해 ${man(c.prev)})` : ''}. 에이전트(${AGENCY[agencyOf(me).tier].name} · 협상력 ${c.lev.agent}급) 분석 — 성적 ${c.lev.perf} · 팬들의 관심 ${c.lev.pop} · 명성 ${c.lev.fame}.`,
+      ch: (st, me, c) => {
+        c.opts = ['ok', 'a10', 'a25', c.arb ? 'arb' : null].filter(Boolean);
+        return c.opts.map(o => ({ ok: `제시액에 사인한다 (연 ${man(c.offer)})`, a10: `조금 더 올려 달라고 한다 (연 ${man(c.ask10)} 요구 · 에이전트 판단: ${c.lev.w10})`, a25: `크게 올려 달라고 버틴다 (연 ${man(c.ask25)} 요구 · 에이전트 판단: ${c.lev.w25})`, arb: `연봉조정을 신청한다 (구단안 vs 선수안, 지면 감독과 서먹해진다)` }[o]));
+      },
+      safe: 0,
+      res: (st, me, i, c) => {
+        const k = c.opts[i];
+        const sign = (sal, txt) => { me.salary = sal; if (me.contract && me.contract.until < st.year) me.contract = null; return txt; };
+        if (k === 'ok') { me.trust += 2; return sign(c.offer, '도장을 찍고 바로 훈련장으로 향했다.'); }
+        if (k === 'arb') {
+          if (R.chance(clamp(0.35 + (c.lev.p10 - 0.5) * 0.5, 0.2, 0.65))) { const s = Math.round(Math.max(c.offer, c.offer + (c.mv - c.offer) * 0.5) / 100) * 100; story(st, `${me.age}세, 연봉조정에서 승리. 연 ${man(s)}.`); return sign(s, `조정위원회가 선수 손을 들어줬다. 연 ${man(s)}.`); }
+          me.trust -= 10; return sign(c.offer, '조정에서 졌다. 구단안대로 사인했고, 구단과의 공기가 서늘하다.');
+        }
+        const big = k === 'a25', p = big ? c.lev.p25 : c.lev.p10, ask = big ? c.ask25 : c.ask10, u = R();
+        if (u < p) { me.pop += big ? 2 : 0; return sign(ask, `구단이 요구를 받아들였다. 연 ${man(ask)}에 사인!`); }
+        if (u < p + (1 - p) * 0.4) { const mid = Math.round((c.offer + ask) / 2 / 100) * 100; return sign(mid, `밀고 당긴 끝에 중간에서 합의했다. 연 ${man(mid)}.`); }
+        me.trust -= big ? 6 : 3;
+        if (big && R.chance(0.3)) me.pop -= 3;
+        return sign(c.offer, big ? '"그 금액은 무리입니다." 구단은 끝내 버텼다. 제시액에 사인했지만 분위기가 껄끄럽다.' : '구단이 꿈쩍하지 않았다. 제시액에 사인했다.');
+      },
+    },    { id: 'camp', forced: true, cat: '입단', who: '수석코치', text: '첫 스프링캠프. 선배들 사이에서 눈에 띄려면 뭔가 보여줘야 한다.', ch: ['무리해서라도 어필한다', '내 페이스대로 간다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { me.flags.camp = true; if (R.chance(0.2)) me.flags.injRisk = (me.flags.injRisk || 0) + 0.06; return '캠프 MVP 후보 기사에 이름이 올랐다.'; } me.care += 1; return '불펜 투구 수를 지키며 묵묵히 몸을 만들었다.'; } },
     { id: 'number', forced: true, cat: '입단', who: '구단 매니저', text: '등번호를 정할 시간. 구단 레전드의 영구결번 바로 옆, 비어 있는 레전드 번호를 달 수도 있다.', ch: ['레전드의 번호를 요청한다', '빈 번호면 충분하다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { me.pop += 8; me.flags.legendNum = true; return '"그 번호의 무게를 견딜 수 있을까?" 기자가 물었다.'; } return '유니폼 뒤의 숫자보다 앞의 이름이 중요하다.'; } },
@@ -2755,7 +2876,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     { id: 'toC', cat: '포지션', who: '감독', cond: (st, me) => me.stage === 'pro' && me.role === 'B' && me.pos !== 'C' && me.r.arm >= 65 && me.lastSeason && !me.lastSeason.starter, text: '"어깨가 좋은데 포수 해볼 생각 없냐? 포수는 늘 부족하다."', ch: ['포수 전향을 수락', '거절한다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { me.pos = 'C'; me.flags.catcher = true; me.care -= 1; story(st, `${me.age}세, 포수 마스크를 썼다.`); return '무릎 보호대가 아직 어색하다.'; } me.trust -= 5; return '2군에서 조금 더 버텨야 한다.'; } },
     { id: 'toOF', cat: '포지션', who: '감독', cond: (st, me) => me.stage === 'pro' && me.role === 'B' && GROUP[me.pos] === 'IF' && me.age >= 28, text: '"내야 수비 범위가 예전 같지 않다. 코너 외야로 가자."', ch: ['수락한다', '내야를 고집한다'], safe: 0,
-      res: (st, me, i) => { if (i === 0) { me.pos = 'OF'; me.flags.cornerOF = true; return '외야 잔디 냄새가 낯설다.'; } if (me.r.def < 50) me.trust -= 5; return '"실책 나오면 바로 바꾼다."'; } },
+      res: (st, me, i) => { if (i === 0) { me.pos = 'OF'; me.ofPos = R.chance(0.5) ? 'LF' : 'RF'; me.flags.cornerOF = true; return '외야 잔디 냄새가 낯설다.'; } if (me.r.def < 50) me.trust -= 5; return '"실책 나오면 바로 바꾼다."'; } },
     // 60차: 투타 균형이 무너졌을 때 이도류를 그만둘지 — 잘하는 쪽에 집중하거나(주 포지션과 반대쪽이면 전향), 못하는 쪽에 집중하거나, 계속하거나
     {
       id: 'twQuit', forced: true, cat: '포지션', who: '감독',
@@ -2799,9 +2920,12 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // ---------------- 생활 ----------------
     { id: 'youtube', cat: '생활', who: '구단 홍보팀', cond: (st, me) => me.stage === 'pro' && me.lastSeason && me.lastSeason.firstSegs >= 1, text: '구단 유튜브에서 고정 출연 제안이 왔다. 반응이 좋으면 몸값도 오른다는데.', ch: ['출연한다', '야구에만 집중한다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { me.pop += 10; me.flags.ytBump = true; if (R.chance(0.3)) me.flags.slump = true; return '첫 영상 조회수가 50만을 넘었다.'; } return '카메라 대신 배팅 케이지를 택했다.'; } },
-    { id: 'agent', cat: '생활', who: '대형 에이전시', cond: (st, me) => me.stage === 'pro' && me.svc >= 3, text: '"FA 때 몸값, 저희가 확실히 올려드리겠습니다." 대형 에이전시의 러브콜.', ch: ['대형 에이전시로 옮긴다', '지금 에이전트와 간다'], safe: 1,
-      res: (st, me, i) => { if (i === 0) { me.flags.bigAgent = true; me.pop -= 2; return '계약서가 두툼했다.'; } addR(me, 'men', 1); return '"끝까지 같이 갑시다."'; } },
-    { id: 'love', cat: '생활', who: '매니저', cond: (st, me) => me.stage === 'pro' && me.age >= 22, text: '열애 사실을 공개할까? 기자들이 냄새를 맡기 시작했다.', ch: ['공개한다', '비공개로 간다'], safe: 1,
+    // 62차: 에이전시 영입 제안 (기존 → 중형 → 대형). 예전 '대형 에이전시 러브콜' 이벤트를 대신한다
+    { id: 'agency', forced: true, repeat: true, cat: '생활', who: '에이전시',
+      prep: (st, me, c) => { const A = AGENCY[c.tier]; c.skill = R.int(A.skill[0], A.skill[1]); c.cur = agencyOf(me); },
+      text: (st, me, c) => { const A = AGENCY[c.tier], C = AGENCY[c.cur.tier]; return `${A.name}에서 연락이 왔다. "연봉 협상, FA 몸값까지 저희가 책임지겠습니다." 협상력 ${agentGrade(c.skill)}급 · 수수료 연봉의 ${Math.round(A.fee * 100)}%. (지금: ${C.name} · 협상력 ${agentGrade(c.cur.skill)}급 · 수수료 ${Math.round(C.fee * 100)}%)`; },
+      ch: (st, me, c) => [`${AGENCY[c.tier].name}로 옮긴다`, '지금 에이전시와 간다'], safe: 1,
+      res: (st, me, i, c) => { if (i === 0) { me.agency = { tier: c.tier, skill: c.skill }; if (c.tier === 'big') me.flags.bigAgent = true; story(st, `${me.age}세, ${AGENCY[c.tier].name}와 계약.`); return '계약서가 두툼했다. 협상 테이블에서 든든한 편이 생겼다.'; } addR(me, 'men', 1); return '"끝까지 같이 갑시다."'; } },    { id: 'love', cat: '생활', who: '매니저', cond: (st, me) => me.stage === 'pro' && me.age >= 22, text: '열애 사실을 공개할까? 기자들이 냄새를 맡기 시작했다.', ch: ['공개한다', '비공개로 간다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { me.pop += 6; if (me.lastSeason && me.lastSeason.war < WS(1) && R.chance(0.3)) addR(me, 'men', -3); return '축하 댓글과 악플이 반반이다.'; } if (R.chance(0.2)) me.pop += 3; return '조용한 연애를 이어갔다.'; } },
     { id: 'drink', cat: '생활', who: '선배', cond: (st, me) => me.stage === 'pro', text: '"오늘 선배들끼리 한잔한다. 너도 와라."', ch: ['참석한다', '빠진다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { me.trust += 3; me.care -= 1; return '새벽 세 시, 선배가 어깨를 감쌌다.'; } me.care += 1; if (R.chance(0.2)) me.trust -= 5; return '숙소에서 일찍 잠들었다.'; } },
@@ -2817,8 +2941,6 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       res: (st, me, i) => { if (i === 0) { me.trust += 10; addR(me, 'men', 2); if (R.chance(0.2)) me.flags.slump = true; story(st, `${me.age}세, 주장 완장을 찼다.`); return '라커룸 한가운데 자리가 생겼다.'; } return '"아직은 제 야구에 집중하고 싶습니다."'; } },
     { id: 'nation', cat: '커리어', who: '대표팀 감독', cond: (st, me) => me.stage === 'pro' && me.lastSeason && me.lastSeason.war >= WS(4), text: '국가대표 소집 통보. 시즌 준비 일정이 빡빡해진다.', ch: ['합류한다', '정중히 고사한다'], safe: 0,
       res: (st, me, i) => { if (i === 0) { me.pop += 10; if (R.chance(0.25)) me.flags.slowStart = true; story(st, `${me.age}세, 태극마크를 달았다.`); return '가슴의 태극기가 무겁고도 뜨거웠다.'; } me.pop -= 3; return '여론이 조금 싸늘하다.'; } },
-    { id: 'arb', cat: '커리어', who: '에이전트', cond: (st, me) => me.stage === 'pro' && me.svc >= 3 && !(me.contract && me.contract.until >= st.year) && me.lastSeason && me.lastSeason.war >= WS(2), text: '구단 연봉 제시안이 기대보다 낮다. 연봉조정을 신청할까?', ch: ['연봉조정 신청', '구단안을 수용한다'], repeat: true, w: 0.6, safe: 1,
-      res: (st, me, i) => { if (i === 0) { if (R.chance(0.5)) { me.salary = Math.round((me.salary + (marketValue(me) - me.salary) * 0.25) / 100) * 100; return '조정위원회가 선수 손을 들어줬다.'; } me.trust -= 10; return '조정에서 졌다. 구단과의 공기가 서늘하다.'; } me.trust += 5; return '도장을 찍고 바로 훈련장으로 향했다.'; } },
     { id: 'trade', cat: '커리어', who: '에이전트', cond: (st, me) => me.stage === 'pro' && me.age >= 23 && me.lastSeason && me.lastSeason.firstSegs <= 1 && myOVR(me) >= 45, text: '주전 경쟁에서 밀렸다. 트레이드를 요청할까?', ch: ['트레이드를 요청한다', '버틴다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { const t = R.chance(0.6) ? pickBetterTeam(st, me.team) : null; if (t) { moveTeam(st, t); story(st, `${me.age}세, ${tj(st, t, '으로', '로')} 트레이드.`); return `${tj(st, t, '으로', '로')} 트레이드됐다. 새 출발이다.`; } me.trust -= 10; return '요청은 받아들여지지 않았다. 감독의 눈빛이 차갑다.'; } addR(me, 'men', 1); return '이를 악물었다.'; } },
   ];
@@ -2880,7 +3002,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     BAL, LABEL, POSNAME, BAT, PIT, ALL, GROUP,
     newGame, makeCandidates, playSeason, pendingItem, choose, voluntaryRetire, careerScore,
     view, debug, interest, draftRange, man, teamName, velo, ovrAt, valAt, expWAR, scoreParts, mainKeys, oppKeys, LCFG, cfgOf, leagueList, myLeagueId, findTeam,
-    AVG, OBP, SLG, OPS, ERA, IP, rate3, fmtBatShort, fmtPitShort,
+    AVG, OBP, SLG, OPS, ERA, IP, ipTxt, rate3, posName, hofGoals, salaryLeverage, AGENCY, fmtBatShort, fmtPitShort,
     PROF, OPT, disp, dispD, canPost, requestPosting, changeFocus, _internal: { batRates, pitRates, batExp, pitExp, ERA_SCALE, FORM0 },
   };
 })();
