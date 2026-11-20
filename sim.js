@@ -1308,6 +1308,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       if (br.kind === 'S') { pa = SLOTPA[br.order] / 3 * frac; if (me.twoWay && me.role === 'P') pa *= 0.7; starterSeg = true; m.batPos = br.slot === 'DH' ? 'DH' : (me.role === 'B' ? me.pos : 'DH'); }
       else pa = BAL.benchPA * frac * (me.flags.utility ? 1.4 : 1) * (me.twoWay && me.role === 'P' ? 0.5 : 1);
       pa *= GF * (m.paMul || 1) * R.range(BAL.myPASeg[0], BAL.myPASeg[1]);
+      pa = Math.min(pa, 230 * GF * frac);   // 64차: 시즌 타석 상한 (KBO 144경기 약 690 · MLB 162경기 약 776) — 1번 타자 + 흔들림이 겹쳐 811타석이 나오던 문제
       const rm = br.kind === 'S' ? RUNM[br.order] : 0.95, bm = br.kind === 'S' ? RBIM[br.order] : 0.9;
       const s = finishBat(simBat(p, Math.round(pa)), p, 1, rm, bm);
       addLine(m.season.bat1, s); segLine.bat = s;
