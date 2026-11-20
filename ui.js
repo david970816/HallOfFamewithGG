@@ -566,8 +566,9 @@
     const hof = st.done && st.final && st.final.hof && st.final.hof.in ? st.final.hof : null;
     const grade = hof ? 'HALL OF FAME' : { bronze: 'BRONZE', silver: 'SILVER', gold: 'GOLD', legend: 'LEGEND' }[v.grade];
     const fcls = hof ? 'hof' : v.grade;
+    const troph = trophyList(st.car && st.car.awList);   // 64차: 우승·메달이 있으면 프로필을 줄이고 트로피 진열장
     return `
-      <div class="card-wrap"><div class="bcard ${App.flipped ? 'flipped' : ''} ${hof ? 'is-hof' : ''}" data-act="flip">
+      <div class="card-wrap"><div class="bcard ${App.flipped ? 'flipped' : ''} ${hof ? 'is-hof' : ''} ${troph.length ? 'has-troph' : ''}" data-act="flip">
         <div class="face front ${fcls}"><div class="face-in">
           <div class="card-top" style="--team:${color}">
             <div class="card-emblem">${emblem}</div>
@@ -578,6 +579,7 @@
           </div>
           <div class="card-name"><span class="no num">${me.num}</span><h2>${esc(me.name)}</h2></div>
           <div class="card-sub">${esc(team)} · ${sub}${me.role === 'P' ? ` · 최고 ${v.velo}km/h` : ''}</div>
+          ${troph.length ? `<canvas id="card-troph" class="card-troph" width="340" height="104" aria-label="우승 기록: ${esc(troph.map(([k, n]) => `${TROPHY.find(t => t[0] === k)[1]} ${n}회`).join(', '))}"></canvas>` : ''}
           ${barsHTML(me.shown, keys, '', lastChg(st))}
           ${me.twoWay ? `<div class="card-sub tiny" style="padding-top:6px">${me.role === 'P' ? '타자' : '투수'} 능력</div>${barsHTML(me.shown, opp, 'opp', lastChg(st))}` : ''}
           <div class="card-foot"><span>${st.year} SEASON</span><span>탭하면 뒷면</span></div>
@@ -608,6 +610,8 @@
   function afterCard() {
     const cv = document.getElementById('card-ava');
     if (cv && App.st) drawAvatar(cv, App.st.me.avatar || 1, App.st.me.team ? TEAMCOLOR(App.st.me.team) : '#3d4a5c');
+    const tc = document.getElementById('card-troph');
+    if (tc && App.st) { const c = tc.getContext('2d'); c.clearRect(0, 0, tc.width, tc.height); drawShelf(c, trophyList(App.st.car.awList), 0, 0, tc.width, tc.height); }
   }
 
   // ================================================================
@@ -1502,6 +1506,7 @@
         : Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]),
       twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total, cv: 2,
       aw: mergeAw(f.awList || []).slice(0, 12), teams: (f.teams || []).join(' → ').slice(0, 44),
+      troph: trophyList(f.awList || []),   // 64차: 우승 트로피 [종류, 횟수]
       ...(pt ? { rowsP: pt.rows, totalP: pt.total } : {}),
     };
   }
@@ -1527,6 +1532,99 @@
       return `${parts.join(', ')} ${k}${all.length > ys.length ? ` (${all.length}회)` : ''}`;
     });
   }
+  // ---------- 64차: 우승 트로피 진열장 (카드 앞면) ----------
+  // 업적 목록('2036 한국시리즈 우승' 등)에서 리그 우승·국제대회 우승/메달만 골라 종류별 횟수로. 순서 = 위상 순
+  const TROPHY = [
+    ['WS', '월드시리즈', /월드시리즈 우승$/], ['JS', '재팬시리즈', /재팬시리즈 우승$/], ['KS', '한국시리즈', /한국시리즈 우승$/],
+    ['WBC', 'WBC', /WBC 우승$/], ['P12', '프리미어12', /프리미어12 우승$/],
+    ['OG', '올림픽 금', /올림픽 금메달$/], ['OS', '올림픽 은', /올림픽 은메달$/], ['OB', '올림픽 동', /올림픽 동메달$/],
+    ['AG', '아시안게임 금', /아시안게임 금메달$/], ['AS', '아시안게임 은', /아시안게임 은메달$/], ['AB', '아시안게임 동', /아시안게임 동메달$/],
+  ];
+  // 합쳐진 문자열('2029, 2031~2033 한국시리즈 우승', '… (3회)')의 횟수
+  function awCount(s) {
+    const m = /\((\d+)회\)$/.exec(s); if (m) return +m[1];
+    const yrs = /^([\d,~ ]+) /.exec(s); if (!yrs) return 1;
+    return yrs[1].split(',').reduce((n, p) => { const r = /(\d{4})\s*~\s*(\d{4})/.exec(p); return n + (r ? +r[2] - +r[1] + 1 : /\d{4}/.test(p) ? 1 : 0); }, 0) || 1;
+  }
+  function trophyList(aw) {
+    const out = [];
+    for (const [k, label, re] of TROPHY) { const n = (aw || []).filter(a => re.test(a)).reduce((s, a) => s + awCount(a), 0); if (n) out.push([k, n]); }
+    return out;
+  }
+  // 트로피 한 개 그리기: (cx, by) = 가운데 아래, s = 높이. 실제 트로피를 본뜨지 않은 단순한 모양
+  function drawTrophy(c, k, cx, by, s) {
+    const u = s / 60, top = by - s;
+    const G1 = '#f2c94c', G2 = '#b8860b', SV = '#cfd6df', SV2 = '#8d96a3', BR = '#cd7f32', BR2 = '#8a5222';
+    const base = (col, w, h) => { c.fillStyle = col; roundRect(c, cx - w / 2 * u, by - h * u, w * u, h * u, 3 * u); c.fill(); };
+    const cup = (body, dark, plate, tall) => {
+      base(plate, 34, 9); c.fillStyle = dark; c.fillRect(cx - 9 * u, by - 13 * u, 18 * u, 5 * u);
+      c.fillStyle = body; c.fillRect(cx - 3 * u, by - (tall ? 26 : 22) * u, 6 * u, (tall ? 14 : 10) * u);
+      const bw = tall ? 15 : 21, bt = top + (tall ? 4 : 8) * u, bb = by - (tall ? 26 : 22) * u;
+      c.beginPath(); c.moveTo(cx - bw * u, bt); c.lineTo(cx + bw * u, bt); c.quadraticCurveTo(cx + bw * u, bb, cx, bb); c.quadraticCurveTo(cx - bw * u, bb, cx - bw * u, bt); c.fill();
+      c.strokeStyle = body; c.lineWidth = 3.5 * u;
+      c.beginPath(); c.arc(cx - bw * u, bt + 9 * u, 7 * u, Math.PI * 0.5, Math.PI * 1.5); c.stroke();
+      c.beginPath(); c.arc(cx + bw * u, bt + 9 * u, 7 * u, -Math.PI * 0.5, Math.PI * 0.5); c.stroke();
+      c.fillStyle = 'rgba(255,255,255,.45)'; c.fillRect(cx - (bw - 5) * u, bt + 3 * u, 3 * u, 12 * u);
+    };
+    const medal = (face, rim, rib1, rib2) => {
+      c.fillStyle = rib1; c.beginPath(); c.moveTo(cx - 14 * u, top); c.lineTo(cx - 4 * u, top); c.lineTo(cx + 4 * u, by - 30 * u); c.lineTo(cx - 4 * u, by - 30 * u); c.fill();
+      c.fillStyle = rib2; c.beginPath(); c.moveTo(cx + 14 * u, top); c.lineTo(cx + 4 * u, top); c.lineTo(cx - 4 * u, by - 30 * u); c.lineTo(cx + 4 * u, by - 30 * u); c.fill();
+      c.fillStyle = rim; c.beginPath(); c.arc(cx, by - 17 * u, 17 * u, 0, Math.PI * 2); c.fill();
+      c.fillStyle = face; c.beginPath(); c.arc(cx, by - 17 * u, 13 * u, 0, Math.PI * 2); c.fill();
+      c.fillStyle = rim; star(cx, by - 17 * u, 7 * u);
+    };
+    const star = (x, y, r) => { c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } c.closePath(); c.fill(); };
+    if (k === 'KS') cup(G1, G2, '#8b1e1e', false);
+    else if (k === 'JS') cup(G1, G2, '#1f3a68', true);
+    else if (k === 'WS') {
+      // 깃발 고리: 기둥 위에 작은 삼각 깃발들이 둥글게
+      base('#3d4a5c', 32, 9); c.fillStyle = SV2; c.fillRect(cx - 9 * u, by - 14 * u, 18 * u, 5 * u);
+      c.fillStyle = G2; c.fillRect(cx - 2.5 * u, by - 32 * u, 5 * u, 18 * u);
+      const cy = by - 32 * u, rx = 17 * u, ry = 5 * u;
+      // 뒤쪽 깃발 → 고리 → 앞쪽 깃발 순서로 그려 입체감
+      const flags = Array.from({ length: 8 }, (_, i) => -Math.PI / 2 + i * Math.PI / 4);
+      const flag = a => { const x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry; c.fillStyle = SV2; c.fillRect(x - 0.8 * u, y - 18 * u, 1.6 * u, 18 * u); c.fillStyle = Math.sin(a) > 0 ? G1 : '#d9b23a'; c.beginPath(); c.moveTo(x, y - 18 * u); c.lineTo(x + 8 * u, y - 14.5 * u); c.lineTo(x, y - 11 * u); c.fill(); };
+      flags.filter(a => Math.sin(a) <= 0).forEach(flag);
+      c.fillStyle = G2; c.beginPath(); c.ellipse(cx, cy, rx + 2 * u, ry + 2 * u, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = G1; c.beginPath(); c.ellipse(cx, cy - 1 * u, rx, ry, 0, 0, Math.PI * 2); c.fill();
+      flags.filter(a => Math.sin(a) > 0).forEach(flag);
+    } else if (k === 'WBC') {
+      base('#2b2b2b', 30, 9); c.fillStyle = SV2; c.fillRect(cx - 7 * u, by - 18 * u, 14 * u, 9 * u);
+      const r = 17 * u, cy = by - 35 * u;
+      c.fillStyle = G1; c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = G2; c.lineWidth = 1.8 * u;
+      c.beginPath(); c.ellipse(cx, cy, r * 0.45, r, 0, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.moveTo(cx - r, cy); c.lineTo(cx + r, cy); c.stroke();
+      c.beginPath(); c.ellipse(cx, cy, r, r * 0.4, 0, 0, Math.PI * 2); c.stroke();
+    } else if (k === 'P12') {
+      base('#1f3a68', 32, 9); c.fillStyle = SV; c.fillRect(cx - 9 * u, by - 22 * u, 18 * u, 13 * u);
+      c.fillStyle = G1; star(cx, by - 40 * u, 19 * u); c.fillStyle = G2; star(cx, by - 40 * u, 8 * u);
+    } else if (k === 'OG') medal(G1, G2, '#1f3a68', '#c4352b');
+    else if (k === 'OS') medal(SV, SV2, '#1f3a68', '#c4352b');
+    else if (k === 'OB') medal('#e3a06b', BR2, '#1f3a68', '#c4352b');
+    else if (k === 'AG') medal(G1, G2, '#2e7d4f', '#f2f2f2');
+    else if (k === 'AS') medal(SV, SV2, '#2e7d4f', '#f2f2f2');
+    else if (k === 'AB') medal('#e3a06b', BR, '#2e7d4f', '#f2f2f2');
+  }
+  // 진열장: (x, y, w, h) 상자 안에 트로피 + 이름 + 횟수
+  function drawShelf(c, list, x, y, w, h) {
+    c.fillStyle = '#f1e9d8'; roundRect(c, x, y, w, h, 12); c.fill();
+    c.fillStyle = '#d9cdb3'; c.fillRect(x + 10, y + h - 40, w - 20, 3);
+    if (!list.length) { c.fillStyle = '#a39a88'; c.font = '700 17px sans-serif'; c.textAlign = 'center'; c.fillText('우승 기록 없음', x + w / 2, y + h / 2 + 6); c.textAlign = 'left'; return; }
+    const n = list.length, slot = w / n, s = Math.min(58, h - 50, slot * 0.7);
+    const nameOf = k => TROPHY.find(t => t[0] === k)[1];
+    list.forEach(([k, cnt], i) => {
+      const cx = x + slot * (i + 0.5);
+      drawTrophy(c, k, cx, y + h - 42, s);
+      c.textAlign = 'center';
+      let fs = Math.min(14, Math.max(10, slot / 6.2)); c.font = `800 ${fs}px sans-serif`;
+      const nm = nameOf(k);
+      while (fs > 9 && c.measureText(nm).width > slot - 4) { fs -= 0.5; c.font = `800 ${fs}px sans-serif`; }
+      c.fillStyle = '#4a5163'; c.fillText(nm, cx, y + h - 22);
+      c.fillStyle = '#c4352b'; c.font = `900 ${Math.min(15, Math.max(11, slot / 5.5))}px sans-serif`; c.fillText(`${cnt}회`, cx, y + h - 6);
+    });
+    c.textAlign = 'left';
+  }
   function drawCard(d) {
     const three = Array.isArray(d.rowsP);   // 55차: 이도류는 앞면 + 타자 기록 + 투수 기록 3장
     const CW = 600, CH = 900, G = 40, W = CW * (three ? 3 : 2) + G * (three ? 4 : 3), H = CH + G * 2;
@@ -1538,22 +1636,25 @@
     const frame = x => { c.fillStyle = gradC; roundRect(c, x, G, CW, CH, 28); c.fill(); c.fillStyle = '#fbf7ee'; roundRect(c, x + 14, G + 14, CW - 28, CH - 28, 20); c.fill(); };
     // ---- 앞면 ----
     const X = G; frame(X);
-    c.save(); roundRect(c, X + 14, G + 14, CW - 28, 430, 20); c.clip(); c.fillStyle = color; c.fillRect(X + 14, G + 14, CW - 28, 430); c.restore();
+    // 64차: 프로필(팀 색 영역)을 430 → 320으로 줄이고, 그 자리에 우승 트로피 진열장
+    c.save(); roundRect(c, X + 14, G + 14, CW - 28, 320, 20); c.clip(); c.fillStyle = color; c.fillRect(X + 14, G + 14, CW - 28, 320); c.restore();
     const av = document.createElement('canvas'); drawAvatar(av, d.avatar, color);
-    c.imageSmoothingEnabled = false; c.drawImage(av, X + CW / 2 - 160, G + 120, 320, 320);
+    c.imageSmoothingEnabled = false; c.drawImage(av, X + CW / 2 - 115, G + 104, 230, 230);
     c.fillStyle = '#fff'; c.textAlign = 'right'; c.font = '900 72px sans-serif'; c.fillText(String(d.ovr), X + CW - 44, G + 100);
     c.font = '800 20px sans-serif'; c.fillText('OVR', X + CW - 44, G + 126);
     c.textAlign = 'left'; c.font = '900 22px sans-serif'; c.fillText(d.team, X + 44, G + 64);
     if (isHof) {
       // 명예의 전당: 금색 리본 + 배지
       const gr = c.createLinearGradient(X + 14, 0, X + CW - 14, 0); gr.addColorStop(0, 'rgba(245,215,110,0)'); gr.addColorStop(0.15, '#f5d76e'); gr.addColorStop(0.5, '#ffe9a6'); gr.addColorStop(0.85, '#f5d76e'); gr.addColorStop(1, 'rgba(245,215,110,0)');
-      c.fillStyle = gr; c.fillRect(X + 14, G + 150, CW - 28, 40); c.fillStyle = '#3b2a05'; c.font = '900 22px sans-serif'; c.textAlign = 'center'; c.fillText('★ 명예의 전당 헌액자 · ' + d.hof + ' ★', X + CW / 2, G + 178); c.textAlign = 'left';
-      c.fillStyle = '#d4a52f'; roundRect(c, X + 44, G + 392, 190, 34, 8); c.fill(); c.fillStyle = '#3b2a05'; c.font = '900 18px sans-serif'; c.fillText('HALL OF FAME', X + 58, G + 416);
-    } else { c.fillStyle = gradC; roundRect(c, X + 44, G + 392, 130, 34, 8); c.fill(); c.fillStyle = '#fff'; c.font = '900 18px sans-serif'; c.fillText({ bronze: 'BRONZE', silver: 'SILVER', gold: 'GOLD', legend: 'LEGEND' }[d.grade] || '', X + 58, G + 416); }
-    c.fillStyle = '#c4352b'; c.font = '900 52px sans-serif'; c.fillText(String(d.num), X + 44, G + 510);
-    c.fillStyle = '#1b2233'; c.font = '900 50px sans-serif'; c.fillText(d.name, X + 44 + c.measureText(String(d.num)).width + 70, G + 510);
-    c.font = '600 20px sans-serif'; c.fillStyle = '#4a5163';
-    c.fillText(d.info, X + 44, G + 548);
+      c.fillStyle = gr; c.fillRect(X + 14, G + 136, CW - 28, 40); c.fillStyle = '#3b2a05'; c.font = '900 22px sans-serif'; c.textAlign = 'center'; c.fillText('★ 명예의 전당 헌액자 · ' + d.hof + ' ★', X + CW / 2, G + 164); c.textAlign = 'left';
+      c.fillStyle = '#d4a52f'; roundRect(c, X + 44, G + 286, 190, 34, 8); c.fill(); c.fillStyle = '#3b2a05'; c.font = '900 18px sans-serif'; c.fillText('HALL OF FAME', X + 58, G + 310);
+    } else { c.fillStyle = gradC; roundRect(c, X + 44, G + 286, 130, 34, 8); c.fill(); c.fillStyle = '#fff'; c.font = '900 18px sans-serif'; c.fillText({ bronze: 'BRONZE', silver: 'SILVER', gold: 'GOLD', legend: 'LEGEND' }[d.grade] || '', X + 58, G + 310); }
+    c.fillStyle = '#c4352b'; c.font = '900 46px sans-serif'; c.fillText(String(d.num), X + 44, G + 392);
+    c.fillStyle = '#1b2233'; c.font = '900 44px sans-serif'; c.fillText(d.name, X + 44 + c.measureText(String(d.num)).width + 60, G + 392);
+    c.font = '600 19px sans-serif'; c.fillStyle = '#4a5163';
+    c.fillText(d.info, X + 44, G + 426);
+    // 우승 트로피 (예전에 저장된 카드는 업적 목록에서 다시 센다)
+    drawShelf(c, Array.isArray(d.troph) ? d.troph : trophyList(d.aw), X + 36, G + 442, CW - 72, 128);
     const pair = d.stats.length && d.stats[0].length >= 4;
     if (pair) {
       // 범례: 막대 = 주 능력, 세로선 = 반대쪽 능력
@@ -1886,6 +1987,7 @@
 
   // 디버그·테스트용 핸들
   window.__app = App;
+  window.__card = { drawCard, cardData, render: () => render() };   // 64차: 카드 확인용
   // 51차: 게임에 처음 들어올 때 아직 안 본 공지가 있으면 팝업으로 알린다
   if (CT.notices.length && isNew('notice')) App.noticePop = true;
   render();

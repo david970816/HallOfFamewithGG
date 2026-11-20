@@ -96,6 +96,10 @@ input.t, select.t { width: 100%; padding: 10px 12px; border-radius: 10px; border
 .card-ovr b { display: block; font-size: 34px; line-height: 1; font-weight: 900; }
 .card-ovr span { font-size: 10px; letter-spacing: .15em; opacity: .85; }
 .card-grade { position: absolute; bottom: 8px; right: 10px; font-size: 10px; font-weight: 800; letter-spacing: .14em; color: #fff; background: rgba(0,0,0,.28); padding: 2px 7px; border-radius: 6px; }
+/* 64차: 우승 트로피 진열장 — 있으면 프로필(팀 색 영역)을 줄인다 */
+.has-troph .card-top { height: 34%; }
+.has-troph .card-top canvas { width: auto; height: 100%; }
+.card-troph { display: block; width: calc(100% - 28px); height: auto; margin: 0 14px 4px; }
 .card-name { padding: 9px 14px 2px; display: flex; align-items: baseline; gap: 8px; }
 .card-name h2 { font-size: 22px; letter-spacing: -.01em; }
 .card-name .no { font-size: 22px; font-weight: 900; color: var(--red); }
