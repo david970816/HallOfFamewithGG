@@ -138,6 +138,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     otherInj: 0.10,
     // 5.9 돈 (만원)
     // 27차: 연봉 인상 — 시장가치 1억+2억/WAR → 1.5억+2.8억/WAR, 비FA 연봉은 시장가치에 더 빨리 붙게(arbRate), FA는 계약금(총액의 faBonus) 별도
+    // 64차: 다년계약 중 연봉 재협상 — 시장가치 ≥ 계약 연봉 × ratio, 직전 시즌 WAR ≥ war(예전 눈금), gap년 간격. 인상은 차이의 share만큼(최소 minUp배)
+    renego: { ratio: 1.5, war: 4, gap: 2, share: 0.6, minUp: 1.15 },
     minSal: 3000, valBase: 15000, valPerWAR: 28000, arbRate: 0.45, arbWinRate: 0.65, faBonus: [0.3, 0.45],
     // 리그
     teamNoise: 0.03, adjDecay: 0.5,
@@ -2026,6 +2028,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const v = marketValue(me) * sm;
     if (me.contract && me.contract.until >= st.year) {
       me.salary = me.contract.salary;
+      // 64차: FA 전 다년계약 중 크게 활약하면(시장가치가 계약 연봉의 RN.ratio배 이상 + 직전 시즌 WAR 기준) 구단이 먼저 연봉 재협상을 제안
+      const RN = BAL.renego, left = me.contract.until - st.year + 1;
+      if (!leaving && team && !me.abroad && me.contract.kind === '다년' && left >= 1 && v >= me.contract.salary * RN.ratio && (ls.war || 0) >= WS(RN.war)
+        && (me.flags.renegoYear || 0) <= st.year - RN.gap) { me.flags.renegoYear = st.year; queue(st, 'renego', { v: Math.round(v), left }); }
     } else {
       if (me.contract) me.contract = null;
       if ((me.abroad || (me.faAt != null && me.svc >= me.faAt)) && me.age <= 40) { if (!abroadOK && !leaving) queue(st, 'fa'); }
@@ -2940,6 +2946,29 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       text: (st, me, c) => `KBO 복귀를 알리자 ${c.offers.length}개 구단이 연락해 왔다.`,
       ch: (st, me, c) => c.offers.map(o => `${teamName(st, o.team)}${lastRankTxt(st, o.team)}: ${faTerms(o)}`), safe: 0,
       res: (st, me, i, c) => kboSign(st, c.offers[i], '새 유니폼을 입고 다시 KBO 그라운드에 섰다.'),
+    },
+    // 64차: 다년계약 중 연봉 재협상 (구단이 먼저 제안)
+    {
+      id: 'renego', forced: true, cat: '계약', who: '단장',
+      prep: (st, me, c) => {
+        const RN = BAL.renego, cur = me.contract ? me.contract.salary : me.salary;
+        c.cur = cur;
+        c.up = Math.round(Math.max(cur * RN.minUp, cur + (c.v - cur) * RN.share) * agentRoll(me) / 100) * 100;   // 남은 기간 연봉만 올린다
+        const ny = Math.max(c.left + 1, offerYrs(me, 5));
+        c.ext = { yrs: ny, sal: Math.round(Math.max(c.up, c.v * R.range(0.85, 0.95)) * agentRoll(me) / 100) * 100 };   // 기간도 늘리는 새 다년계약
+      },
+      text: (st, me, c) => `"계약 기간이 ${c.left}년 남았지만, 지금 활약에 비하면 연봉이 너무 적다. 우리가 먼저 다시 맞춰 주겠다." 지금 연봉은 연 ${man(c.cur)}.`,
+      ch: (st, me, c) => [`남은 ${c.left}년 연봉을 올린다 (연 ${man(c.up)})`, `새 ${c.ext.yrs}년 계약으로 바꾼다 (연 ${man(c.ext.sal)}, FA는 그만큼 늦어진다)`, '지금 계약대로 간다'],
+      safe: 0,
+      res: (st, me, i, c) => {
+        if (i === 0) { me.contract.salary = c.up; me.salary = c.up; me.trust += 3; story(st, `${me.age}세, 구단과 연봉 재협상. 남은 ${c.left}년 연 ${man(c.up)}.`); return '구단이 먼저 손을 내밀었다. 사인은 금방 끝났다.'; }
+        if (i === 1) {
+          me.contract = { salary: c.ext.sal, until: st.year + c.ext.yrs - 1, kind: '다년' }; me.salary = c.ext.sal;
+          me.faAt = Math.max(me.faAt || 0, me.svc + c.ext.yrs); me.trust += 5; me.flags.oneClub = (me.flags.oneClub || 0) + 1;
+          story(st, `${me.age}세, 계약 기간 중 ${c.ext.yrs}년 새 계약. 연 ${man(c.ext.sal)}.`); return '"여기서 오래 함께하자." 단장이 악수를 청했다.';
+        }
+        me.trust += 1; return '"계약은 계약이죠. 지금 조건대로 뛰겠습니다." 구단이 고개를 끄덕였다.';
+      },
     },
     {
       id: 'extension', forced: true, cat: '커리어', who: '단장',
