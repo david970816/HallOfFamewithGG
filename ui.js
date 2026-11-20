@@ -819,10 +819,10 @@
     const byTeam = [];
     const amRows = st.hist.filter(h => ['HS', 'UNIV', 'IND', 'MIL'].includes(histLg(h))).map(h => ({ year: h.year, team: histLg(h) === 'HS' ? '고교 야구부' : histLg(h) === 'IND' ? '독립리그' : histLg(h) === 'MIL' ? h.team : `${h.team} (대학)`, bat: h.bat && h.bat.PA ? h.bat : null, pit: h.pit && h.pit.outs ? h.pit : null, war: null }));
     for (const r of amRows.concat(topRows)) { let t = byTeam.find(x => x.team === r.team); if (!t) byTeam.push(t = { team: r.team, rows: [] }); t.rows.push(r); }
-    const titles = (car.awList || []).filter(a => /우승/.test(a));
+    const titles = (car.awList || []).filter(awKeep).filter(a => /우승/.test(a));
     const amTitles = [];
     for (const h of st.hist) { (h.tourn || []).filter(x => / 우승$/.test(x)).forEach(x => amTitles.push(`${h.year} ${x} (고교)`)); if (/\(우승\)/.test(h.record || '')) amTitles.push(`${h.year} 대학리그 우승 (${h.team})`); }
-    const awards = (car.awList || []).filter(a => !/우승/.test(a));
+    const awards = (car.awList || []).filter(awKeep).filter(a => !/우승/.test(a));
     const teamBlock = byTeam.map(t => {
       const yrs = t.rows.map(r => r.year), war = t.rows.reduce((a, r) => a + (r.war || 0), 0);
       const tTitles = titles.filter(a => (car.titles || []).some(x => a.startsWith(String(x.year)) && t.team.startsWith(x.team)));
@@ -1258,7 +1258,7 @@
         </div>
         <div class="small" style="margin-top:12px;text-align:center">${f.retireAge}세 은퇴 · ${f.seasons}시즌 · 통산 WAR <b>${f1(f.war)}</b>${f.twoWay ? ` (타 ${f1(f.warB)} / 투 ${f1(f.warP)})` : ''}<br>${esc(f.teams.join(' → ') || '프로 무대를 밟지 못했다')}</div>
         ${lines.length ? `<div class="small" style="margin-top:10px;display:grid;gap:4px">${lines.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : ''}
-        ${f.awList.length || f.ms.length ? `<div class="stamps">${f.awList.slice(0, 14).map(a => `<span class="stamp ${/MVP|우승|골든/.test(a) ? 'gold' : ''}">${esc(a)}</span>`).join('')}${f.ms.map(m => `<span class="ribbon">${esc(m)}</span>`).join('')}</div>` : ''}
+        ${f.awList.length || f.ms.length ? `<div class="stamps">${f.awList.filter(awKeep).slice(0, 14).map(a => `<span class="stamp ${/MVP|우승|골든/.test(a) ? 'gold' : ''}">${esc(a)}</span>`).join('')}${f.ms.map(m => `<span class="ribbon">${esc(m)}</span>`).join('')}</div>` : ''}
         <div class="small muted" style="margin-top:10px">통산 수입 ${Sim.man(Math.max(0, f.earnings))}${f.draft ? ` · ${f.draft.year} 드래프트 ${f.draft.round}${typeof f.draft.round === 'number' ? '라운드' : ''}` : ' · 드래프트 미지명'}</div>
       </div>
       <div class="panel reveal"><h3>이제야 밝혀지는 비밀</h3>
@@ -1465,7 +1465,7 @@
     if (f.bat.PA) { c.fillText(`${r3(Sim.AVG(f.bat))}  ${f.bat.H}안타  ${f.bat.HR}홈런  ${f.bat.RBI}타점`, 60, y); y += 38; }
     if (f.pit.outs) { c.fillText(`${f.pit.W}승 ${f.pit.L}패 ${f.pit.SV}세이브  ERA ${f2(Sim.ERA(f.pit))}  ${f.pit.K}K`, 60, y); y += 38; }
     c.font = '800 20px sans-serif'; c.fillStyle = '#c4352b';
-    const aw = f.awList.concat(f.ms.map(m => '통산 ' + m));
+    const aw = f.awList.filter(awKeep).concat(f.ms.map(m => '통산 ' + m));
     let x = 60; y += 10;
     for (const a of aw.slice(0, 12)) { const w = c.measureText(a).width + 24; if (x + w > W - 60) { x = 60; y += 42; } c.strokeStyle = '#c4352b'; c.lineWidth = 3; roundRect(c, x, y - 26, w, 36, 8); c.stroke(); c.fillText(a, x + 12, y); x += w + 10; }
     const pct = benchPercentile(f.score);
@@ -1505,13 +1505,19 @@
       stats: tw ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
         : Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]),
       twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total, cv: 2,
-      aw: mergeAw(f.awList || []).slice(0, 12), teams: (f.teams || []).join(' → ').slice(0, 44),
+      aw: sortAw(mergeAw((f.awList || []).filter(awKeep))), teams: (f.teams || []).join(' → ').slice(0, 44),   // 64차: 업적 12개 자르기 없앰 — 전부, 개인 수상부터
       troph: trophyList(f.awList || []),   // 64차: 우승 트로피 [종류, 횟수]
       ...(pt ? { rowsP: pt.rows, totalP: pt.total } : {}),
     };
   }
   // 60차: 같은 업적은 연도를 모아 한 칸으로 — '2029 MVP', '2031 MVP' → '2029, 2031 MVP' (연속 연도는 2029~2031)
   //   이미 합쳐진 문자열은 '2029, ' 로 시작해 다시 건드리지 않는다 (예전 카드도 그대로 안전)
+  // 64차: 카드 업적 순서 — 개인 수상(MVP·올해의 투수상·시리즈 MVP·골든글러브·신인왕·타이틀) → 리그 우승 → 국제대회 우승·메달 → 국제대회 개인상 → 그 밖
+  const AW_RANK = [/^MVP$/, /올해의 투수상$/, /시리즈 MVP$/, /골든글러브$/, /신인왕$/, /왕$/, /시리즈 우승$/, /(우승|금메달|은메달|동메달|준우승)$/, /대회 MVP$/, /./];
+  function sortAw(list) {
+    const rank = s => { const k = s.replace(/ \(\d+회\)$/, '').replace(/^['\d][\d,~' ]* /, ''); const i = AW_RANK.findIndex(re => re.test(k)); return i < 0 ? AW_RANK.length : i; };
+    return list.map((s, i) => [s, rank(s), i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0]);
+  }
   function mergeAw(list) {
     const order = [], by = {};
     for (const a of list) {
@@ -1537,9 +1543,10 @@
   const TROPHY = [
     ['WS', '월드시리즈', /월드시리즈 우승$/], ['JS', '재팬시리즈', /재팬시리즈 우승$/], ['KS', '한국시리즈', /한국시리즈 우승$/],
     ['WBC', 'WBC', /WBC 우승$/], ['P12', '프리미어12', /프리미어12 우승$/],
-    ['OG', '올림픽 금', /올림픽 금메달$/], ['OS', '올림픽 은', /올림픽 은메달$/], ['OB', '올림픽 동', /올림픽 동메달$/],
-    ['AG', '아시안게임 금', /아시안게임 금메달$/], ['AS', '아시안게임 은', /아시안게임 은메달$/], ['AB', '아시안게임 동', /아시안게임 동메달$/],
+    ['OG', '올림픽 금', /올림픽 금메달$/], ['AG', '아시안게임 금', /아시안게임 금메달$/],   // 64차: 준우승·은·동은 기록에서 뺀다
   ];
+  // 64차: 업적 목록에서 준우승·은메달·동메달을 뺀다 (예전 저장·예전 카드에 남아 있는 것도 화면에서 숨김)
+  const awKeep = a => !/(준우승|은메달|동메달)( \(\d+회\))?$/.test(a);
   // 합쳐진 문자열('2029, 2031~2033 한국시리즈 우승', '… (3회)')의 횟수
   function awCount(s) {
     const m = /\((\d+)회\)$/.exec(s); if (m) return +m[1];
@@ -1588,17 +1595,19 @@
       c.fillStyle = G2; c.beginPath(); c.ellipse(cx, cy, rx + 2 * u, ry + 2 * u, 0, 0, Math.PI * 2); c.fill();
       c.fillStyle = G1; c.beginPath(); c.ellipse(cx, cy - 1 * u, rx, ry, 0, 0, Math.PI * 2); c.fill();
       flags.filter(a => Math.sin(a) > 0).forEach(flag);
-    } else if (k === 'WBC') {
+    } else if (k === 'WBC' || k === 'WBC2') {
+      // 준우승은 은색 지구본
+      const g1 = k === 'WBC' ? G1 : SV, g2 = k === 'WBC' ? G2 : SV2;
       base('#2b2b2b', 30, 9); c.fillStyle = SV2; c.fillRect(cx - 7 * u, by - 18 * u, 14 * u, 9 * u);
       const r = 17 * u, cy = by - 35 * u;
-      c.fillStyle = G1; c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
-      c.strokeStyle = G2; c.lineWidth = 1.8 * u;
+      c.fillStyle = g1; c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = g2; c.lineWidth = 1.8 * u;
       c.beginPath(); c.ellipse(cx, cy, r * 0.45, r, 0, 0, Math.PI * 2); c.stroke();
       c.beginPath(); c.moveTo(cx - r, cy); c.lineTo(cx + r, cy); c.stroke();
       c.beginPath(); c.ellipse(cx, cy, r, r * 0.4, 0, 0, Math.PI * 2); c.stroke();
-    } else if (k === 'P12') {
+    } else if (k === 'P12' || k === 'P122') {
       base('#1f3a68', 32, 9); c.fillStyle = SV; c.fillRect(cx - 9 * u, by - 22 * u, 18 * u, 13 * u);
-      c.fillStyle = G1; star(cx, by - 40 * u, 19 * u); c.fillStyle = G2; star(cx, by - 40 * u, 8 * u);
+      c.fillStyle = k === 'P12' ? G1 : SV; star(cx, by - 40 * u, 19 * u); c.fillStyle = k === 'P12' ? G2 : SV2; star(cx, by - 40 * u, 8 * u);   // 준우승은 은색 별
     } else if (k === 'OG') medal(G1, G2, '#1f3a68', '#c4352b');
     else if (k === 'OS') medal(SV, SV2, '#1f3a68', '#c4352b');
     else if (k === 'OB') medal('#e3a06b', BR2, '#1f3a68', '#c4352b');
@@ -1608,6 +1617,7 @@
   }
   // 진열장: (x, y, w, h) 상자 안에 트로피 + 이름 + 횟수
   function drawShelf(c, list, x, y, w, h) {
+    list = (list || []).filter(t => TROPHY.some(x => x[0] === t[0]));   // 64차: 없앤 종류(준우승·은·동)는 빼고 그린다
     c.fillStyle = '#f1e9d8'; roundRect(c, x, y, w, h, 12); c.fill();
     c.fillStyle = '#d9cdb3'; c.fillRect(x + 10, y + h - 40, w - 20, 3);
     if (!list.length) { c.fillStyle = '#a39a88'; c.font = '700 17px sans-serif'; c.textAlign = 'center'; c.fillText('우승 기록 없음', x + w / 2, y + h / 2 + 6); c.textAlign = 'left'; return; }
@@ -1693,7 +1703,31 @@
       }
     }
     // ---- 뒷면 (이도류: 타자 기록, 투수 기록 두 장) ----
-    const back = (BX, isP, rows, total, title, withAw) => {
+    // 64차: 업적은 자르지 않고 전부 — 다 들어가도록 기록표 줄 간격(lh)과 업적 글씨(fs)를 줄여 가며 맞춘다.
+    //   그래도 넘치면 이도류는 투수 기록 뒷면에 이어서, 아니면 마지막 칸에 '외 N개'
+    // 64차: 뒷면에는 개인 수상만 — 리그 우승·국제대회 우승/메달/준우승은 앞면 트로피로 간다.
+    //   이도류는 타자 수상은 타자 뒷면, 투수 수상은 투수 뒷면, 둘 다 해당하는 상(MVP·신인왕·대회 MVP 등)은 주 포지션 쪽
+    const bare = a => a.replace(/ \(\d+회\)$/, '');
+    const isChamp = a => /(우승|금메달|은메달|동메달)$/.test(bare(a));
+    const isPitAw = a => /(올해의 투수상|다승왕|평균자책점왕|세이브왕|탈삼진왕|투수 골든글러브|대회 탈삼진 1위)$/.test(bare(a));
+    const isBatAw = a => !isPitAw(a) && /(타격왕|홈런왕|타점왕|도루왕|안타왕|골든글러브|대회 홈런 1위)$/.test(bare(a));
+    const awAll = mergeAw((d.aw || []).filter(awKeep)).filter(a => !isChamp(a));
+    const mainPit = d.twMain === '투구';
+    const awBat = three ? awAll.filter(a => isBatAw(a) || (!isPitAw(a) && !mainPit)) : awAll;
+    const awPit = three ? awAll.filter(a => isPitAw(a) || (!isBatAw(a) && mainPit)) : [];
+    const chipLayout = (list, BX, y0, fs, short) => {
+      c.font = `800 ${fs}px sans-serif`;
+      const pad = Math.round(fs * 0.6), ch = Math.round(fs * 1.75), step = ch + 6, out = [];
+      let ax = BX + 40, y = y0;
+      for (let a of list) {
+        if (short || c.measureText(a).width + pad * 2 > CW - 80) a = a.replace(/\b(19|20)(\d\d)\b/g, "'$2");   // '29~'31 처럼 줄여 쓴다
+        const w = Math.min(CW - 80, c.measureText(a).width + pad * 2);
+        if (ax + w > BX + CW - 40) { ax = BX + 40; y += step; }
+        out.push({ a, x: ax, y, w, ch, pad }); ax += w + 8;
+      }
+      return out;
+    };
+    const back = (BX, isP, rows, total, title, awList) => {
       frame(BX);
       c.textAlign = 'left';
       c.fillStyle = '#1b2233'; c.font = '900 30px sans-serif'; c.fillText(`${d.name}  #${d.num}`, BX + 40, G + 76);
@@ -1705,29 +1739,40 @@
         : isP ? ['연도', '팀', '경기', '승', '패', '세이브', '이닝', 'ERA', '탈삼진', 'WAR'] : ['연도', '팀', '경기', '타율', '홈런', '타점', '도루', 'OPS', 'WAR'];
       const cx = v2 ? (isP ? [0, 36, 118, 166, 204, 236, 268, 316, 356, 408, 462] : [0, 32, 100, 146, 186, 232, 276, 310, 352, 386, 432, 478])
         : isP ? [0, 44, 150, 196, 236, 276, 322, 386, 446, 500] : [0, 44, 160, 214, 278, 322, 372, 418, 494];
-      const fs = v2 ? (isP ? 14 : 13) : 16;   // 타자는 칸이 12개라 한 단계 작게 (통산 4자리 숫자끼리 붙지 않게)
+      const nR = rows && rows.length ? rows.length : 1, limit = G + CH - 62;
+      // 업적이 다 들어가는 가장 큰 (줄 간격, 글씨) 조합을 찾는다
+      let lh = 22, chips = [], afs = 17;
+      if (awList && awList.length) {
+        let best = null;
+        search: for (const L of [22, 20, 18, 16]) for (const f of [17, 16, 15, 14, 13, 12, 11]) for (const sh of [false, true]) {
+          const y0 = G + 180 + nR * L + 14 + (f >= 15 ? 40 : 32), lay = chipLayout(awList, BX, y0, f, sh);
+          if (lay[lay.length - 1].y + 8 <= limit) { best = { L, f, lay }; break search; }
+        }
+        if (!best) { const L = 16, f = 11; best = { L, f, lay: chipLayout(awList, BX, G + 180 + nR * L + 14 + 32, f, true) }; }
+        lh = best.L; afs = best.f; chips = best.lay;
+      }
+      const fs0 = v2 ? (isP ? 14 : 13) : 16;   // 타자는 칸이 12개라 한 단계 작게 (통산 4자리 숫자끼리 붙지 않게)
+      const fs = Math.min(fs0, lh - 5);
       const line = (vals, y, bold, head) => { c.font = `${bold ? 800 : 600} ${head && v2 ? 13 : fs}px sans-serif`; vals.forEach((t, i) => c.fillText(String(t), BX + 44 + cx[i], y)); };
       c.fillStyle = '#858a96'; line(cols, G + 150, true, true);
       let y = G + 180;
       c.fillStyle = '#1b2233';
-      for (const r of rows || []) { line(r, y); y += 22; }
-      if (!rows || !rows.length) { c.font = '600 18px sans-serif'; c.fillText('1군 기록 없음', BX + 44, y); y += 24; }
+      for (const r of rows || []) { line(r, y); y += lh; }
+      if (!rows || !rows.length) { c.font = '600 18px sans-serif'; c.fillText('1군 기록 없음', BX + 44, y); y += lh; }
       c.fillStyle = '#1b2233'; c.fillRect(BX + 40, y - 12, CW - 80, 2); y += 14;
       if (total) line(total, y, true);
-      y += 40;
-      if (withAw) {
-        c.font = '800 17px sans-serif'; c.fillStyle = '#c4352b';
-        let ax = BX + 40;
-        for (let a of mergeAw(d.aw || [])) {
-          if (c.measureText(a).width + 20 > CW - 80) a = a.replace(/\b(19|20)(\d\d)\b/g, "'$2");   // 너무 길면 '29~'31 처럼 줄여 쓴다
-          const w = c.measureText(a).width + 20; if (ax + w > BX + CW - 40) { ax = BX + 40; y += 36; } if (y > G + CH - 70) break; c.strokeStyle = '#c4352b'; c.lineWidth = 2; roundRect(c, ax, y - 22, w, 30, 7); c.stroke(); c.fillText(a, ax + 10, y); ax += w + 8; }
-      }
+      // 업적 칩: 넘치는 것은 다음 장으로 넘긴다
+      const shown = chips.filter(k => k.y + 8 <= limit), rest = (awList || []).slice(shown.length);
+      c.font = `800 ${afs}px sans-serif`; c.fillStyle = '#c4352b'; c.strokeStyle = '#c4352b'; c.lineWidth = 2;
+      for (const k of shown) { roundRect(c, k.x, k.y - Math.round(afs * 1.3), k.w, k.ch, 7); c.stroke(); c.fillText(k.a, k.x + k.pad, k.y); }
       c.fillStyle = '#858a96'; c.font = '600 16px sans-serif'; c.fillText(d.teams || '', BX + 40, G + CH - 36);
+      return rest;
     };
+    const more = (BX, rest) => { if (rest.length) { c.fillStyle = '#c4352b'; c.font = '800 13px sans-serif'; c.textAlign = 'right'; c.fillText(`외 ${rest.length}개`, BX + CW - 40, G + CH - 36); c.textAlign = 'left'; } };
     if (three) {
-      back(G * 2 + CW, false, d.rows, d.total, '타자 기록 (1군)', true);
-      back(G * 3 + CW * 2, true, d.rowsP, d.totalP, '투수 기록 (1군)', false);
-    } else back(G * 2 + CW, d.isP, d.rows, d.total, '연도별 기록 (1군)', true);
+      more(G * 2 + CW, back(G * 2 + CW, false, d.rows, d.total, '타자 기록 (1군)', awBat));
+      more(G * 3 + CW * 2, back(G * 3 + CW * 2, true, d.rowsP, d.totalP, '투수 기록 (1군)', awPit));
+    } else more(G * 2 + CW, back(G * 2 + CW, d.isP, d.rows, d.total, '연도별 기록 (1군)', awAll));
     return cv;
   }
   function cardImage(d) {

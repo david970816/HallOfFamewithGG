@@ -1558,7 +1558,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const isMe = x => x && x.id === 'me';
     const lgId = cfgOf(st.lg).id;
     for (const k in aw.titles) if (isMe(aw.titles[k])) { res.awards.push(k); car.aw.TITLE++; car.awList.push(`${st.year} ${k}`); addAch(st, 'TITLE', lgId); }
-    for (const pos in aw.gg) if (aw.gg[pos].some(isMe)) { res.awards.push('골든글러브'); car.aw.GG++; car.awList.push(`${st.year} 골든글러브`); addAch(st, 'GG', lgId); }
+    // 64차: 이도류가 투수로 받은 골든글러브는 '투수 골든글러브'로 남긴다 (카드 뒷면에서 투수 쪽에 적기 위해)
+    for (const pos in aw.gg) if (aw.gg[pos].some(isMe)) { const gn = me.twoWay && pos === 'P' ? '투수 골든글러브' : '골든글러브'; res.awards.push(gn); car.aw.GG++; car.awList.push(`${st.year} ${gn}`); addAch(st, 'GG', lgId); }
     if (isMe(aw.mvp)) { res.awards.push('정규시즌 MVP'); car.aw.MVP++; car.awList.push(`${st.year} MVP`); addAch(st, 'MVP', lgId); story(st, `${st.year}년, 리그 MVP. 이 해만큼은 리그가 내 것이었다.`); }
     if (isMe(aw.poy)) { res.awards.push('올해의 투수상'); car.aw.POY = (car.aw.POY || 0) + 1; car.awList.push(`${st.year} 올해의 투수상`); addAch(st, 'POY', lgId); story(st, `${st.year}년, 올해의 투수상. 리그에서 가장 위력적인 투수로 인정받았다.`); }
     if (me.twoWay && m.warB >= BAL.twoWay.okWAR && m.warP >= BAL.twoWay.okWAR) addAch(st, 'TW', lgId);
@@ -2664,7 +2665,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         // 28차: 국가대표 기록 (역대 커리어·대회별 탭용)
         const gB = r.games.filter(g => /타수/.test(g.me)).length, gP = r.games.filter(g => /이닝/.test(g.me)).length;
         st.car.intlRec = (st.car.intlRec || []).concat([{ year: c.year, age: me.age - 1, name: T.name, result: r.result, rank: r.rank, field: r.field, medal: r.medal, awards: r.awards.slice(), bat: r.bat ? Object.assign({}, r.bat, { G: gB }) : null, pit: r.pit ? Object.assign({}, r.pit, { G: gP }) : null }]);
-        if (r.medal) st.car.awList.push(`${c.year} ${T.name} ${r.result}`);
+        if (r.result === '금메달' || r.result === '우승') st.car.awList.push(`${c.year} ${T.name} ${r.result}`);   // 64차: 업적에는 우승·금메달만 (준우승·은·동은 국제대회 기록에만)
         { const p = intlAchPts(T.name, r.result); if (p) { if (st.car.achPts == null) st.car.achPts = 0; st.car.achPts += p; } }   // 52차: 국제대회 우승·메달도 커리어 점수에
         for (const a of r.awards) { st.car.awList.push(`${c.year} ${T.name} ${a}`); story(st, `${c.year} ${T.name} ${a}.`); }
         if (r.exempt && !me.milDone) {
