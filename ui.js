@@ -141,14 +141,14 @@
   function devToggle() { if (!App.admin) return ''; return `<button class="dev-toggle ${App.dev ? 'on' : ''}" data-act="dev">${App.dev ? '관리자 ON' : '관리자'}</button>`; }
   // 관리자 모드: 숨은 잠재능력(PA)·등급·성장/노화 유형·전성기 창
   const GROWTH_T = { early: '조숙형 (어릴 때 빨리 큼)', late: '대기만성형 (늦게 꽃핌)', normal: '보통', std: '보통' };
-  const AGING_T = { iron: '철인형 (늦게 늙음)', long: '장수형', std: '보통', early: '조기 하락형' };
+  const AGING_T = { iron: '철인형 (늦게 늙음)', long: '장수형', std: '보통', early: '조기 하락형', meteor: '혜성형 (늦게 터지고 빨리 짐)', flash: '반짝 각성형 (급락)' };
   function adminPanel(st) {
     const me = st.me, d = Sim.debug(st);
     const keys = me.twoWay ? Sim.ALL : Sim.mainKeys(me);
     const rows = keys.map(k => { const cur = Sim.disp(me.r[k]), pa = Sim.disp(d.pa[k]); return `<div class="pa-row"><span>${Sim.LABEL[k]}</span><span class="pa-trk"><span class="pot" style="width:${pa}%"></span><span class="cur" style="width:${cur}%"></span></span><span class="v">${cur} / ${pa}</span></div>`; }).join('');
     const pk = d.peak ? `${d.peak.from}~${d.peak.from + d.peak.len - 1}세 (+${d.peak.boost})` : '없음';
     const tf = (me.trainFocus || []).map(k => Sim.LABEL[k]).join('·') || '없음';
-    const kv = [['잠재 등급', d.tier], ['성장 유형', GROWTH_T[d.growth] || d.growth], ['노화 유형', AGING_T[d.aging] || d.aging], ['전성기', pk], ['훈련 부스트', `${tf}${me.age < Sim.BAL.trainFocus.untilAge ? ` (${Sim.BAL.trainFocus.untilAge - 1}세 시즌까지)` : ' (종료)'}`], ['관리', d.care], ['감독 신뢰', d.trust], ['인기', d.pop], ['내구', d.dur], ['큰 부상', d.bigInj], ['스카우트 점수', d.scout], ['1군 연차', `${d.svc} / FA ${d.faAt == null ? '-' : d.faAt}`]];
+    const kv = [['잠재 등급', d.tier], ['성장 유형', GROWTH_T[d.growth] || d.growth], ['노화 유형', AGING_T[d.aging] || d.aging], ['전성기', pk], ['훈련 부스트', `${tf}${me.age < Sim.BAL.trainFocus.untilAge ? ` (${Sim.BAL.trainFocus.untilAge - 1}세 시즌까지)` : ' (종료)'}`], ['관리', d.care], ['감독 신뢰', d.trust], ['인기', d.pop], ['기초체력', d.fit], ['큰 부상', d.bigInj], ['스카우트 점수', d.scout], ['1군 연차', `${d.svc} / FA ${d.faAt == null ? '-' : d.faAt}`]];
     return `<div class="panel admin-panel"><h3>관리자 · 숨은 값</h3><div class="tiny muted">막대: 진한 색 = 현재, 연한 금색 = 잠재 상한(PA)</div>${rows}
       <div class="admin-kv">${kv.map(([k, v]) => `<div><span class="muted">${k}</span> <b>${esc(v)}</b></div>`).join('')}</div>
       <div class="tiny muted" style="margin-top:8px">커리어 점수(현재) ${Sim.careerScore(st)} · 플래그 ${esc(JSON.stringify(d.flags))}</div></div>`;
@@ -265,7 +265,8 @@
   }
   const lbRow = r => ({ id: r.id, name: String(r.name || ''), pos: String(r.pos || ''), twoWay: !!r.two_way, score: +r.score || 0, war: +r.war || 0, hof: !!r.hof, avatar: +r.avatar || 1, color: /^#[0-9a-fA-F]{3,8}$/.test(r.color || '') ? r.color : '#3d4a5c', online: true });
   // 52차: 역대 최고점수 TOP 20 + 시즌 최고점수 TOP 50 (61차: 시즌 = 한국 시간 하루, 매일 밤 12시에 새 시즌)
-  const ALL_MAX = 20, SEASON_MAX = 50, SEASON_MS = 86400000, KST = 9 * 3600000;
+  const ALL_MAX = 50, SEASON_MAX = 50,   // 64차: 역대 TOP 20 → TOP 50 (서버 supabase-alltop50.sql 도 실행해야 50위까지 남는다)
+ SEASON_MS = 86400000, KST = 9 * 3600000;
   function seasonInfo(now) {
     now = now || Date.now();
     const idx = Math.floor((now + KST) / SEASON_MS), start = idx * SEASON_MS - KST;
@@ -368,7 +369,7 @@
       else if (!App.lb.err) { all = []; season = []; sub = '전체 플레이어'; }
       else sub = '온라인 연결 실패 · 이 기기 기록';
     }
-    return rankPanel(all, { title: '명예의 전당 [역대 TOP20]', sub, max: ALL_MAX, podium: true, empty: '아직 기록이 없다. 시상대 맨 위에 서 보자.', foot: '이름을 누르면 야구카드를 볼 수 있다.' })
+    return rankPanel(all, { title: '명예의 전당 [역대 TOP50]', sub, max: ALL_MAX, podium: true, empty: '아직 기록이 없다. 시상대 맨 위에 서 보자.', foot: '이름을 누르면 야구카드를 볼 수 있다.' })
       + rankPanel(season, { title: '시즌 최고점수 TOP 50', sub, max: SEASON_MAX, podium: true, /* 53차: 시즌 순위도 1~3위 시상대 */ note: `매일 밤 12시(한국 시간) 새 시즌 · ${left}`, empty: '이번 시즌 기록이 아직 없다. 첫 번째 주인공이 되어 보자.' });
   }
   // 61차: 골든글러브 라인업 — 포지션마다 커리어 점수 1위(외야는 1~3위)를 야구장에 세운다
@@ -641,7 +642,7 @@
   function devText(st) {
     const d = Sim.debug(st), me = st.me;
     const pa = Object.entries(d.pa).map(([k, v]) => `${Sim.LABEL[k]} ${Math.round(me.r[k])}/${v}`).join('  ');
-    return `[숨은 값 · 개발자 모드]\n잠재 등급: ${d.tier}  성장: ${d.growth}  에이징: ${d.aging}\n현재/잠재(PA): ${pa}\n관리 ${d.care}  감독신뢰 ${d.trust}  인기 ${d.pop}  내구 ${d.dur}  큰부상 ${d.bigInj}\n스카우트점수 ${d.scout}  1군연차 ${d.svc}/${d.faAt == null ? '-' : d.faAt}  이도류배율 ${d.twMult.main}/${d.twMult.opp}${d.twMult.legend ? '(역대급)' : ''}\n플래그 ${JSON.stringify(d.flags)}\n커리어점수(현재) ${Sim.careerScore(st)}`;
+    return `[숨은 값 · 개발자 모드]\n잠재 등급: ${d.tier}  성장: ${d.growth}  에이징: ${d.aging}\n현재/잠재(PA): ${pa}\n관리 ${d.care}  감독신뢰 ${d.trust}  인기 ${d.pop}  기초체력 ${d.fit}  큰부상 ${d.bigInj}\n스카우트점수 ${d.scout}  1군연차 ${d.svc}/${d.faAt == null ? '-' : d.faAt}  이도류배율 ${d.twMult.main}/${d.twMult.opp}${d.twMult.legend ? '(역대급)' : ''}\n플래그 ${JSON.stringify(d.flags)}\n커리어점수(현재) ${Sim.careerScore(st)}`;
   }
   // 역대 시즌: 해마다 성적·소속·수상·능력치 변화를 한 번에
   function tabCareer(st) {
@@ -951,7 +952,7 @@
     }
     if (e.bat && e.bat.PA && !(e.pit && e.pit.outs && /다승|평균자책|세이브|투수/.test(focus || ''))) {
       const b = e.bat;
-      const main = { '타격왕': `타율 ${r3(Sim.AVG(b))}`, '홈런왕': `${b.HR}홈런`, '타점왕': `${b.RBI}타점` }[focus];
+      const main = { '타격왕': `타율 ${r3(Sim.AVG(b))}`, '안타왕': `${b.H}안타`, '홈런왕': `${b.HR}홈런`, '타점왕': `${b.RBI}타점` }[focus];
       if (main) parts.push(`<b>${main}</b>`);
       parts.push(`${r3(Sim.AVG(b))} ${b.HR}홈런 ${b.RBI}타점 OPS ${r3(Sim.OPS(b))}`);
     }
@@ -1239,7 +1240,7 @@
     if (pit.outs) lines.push(`투구 ${pit.G}경기 ${pit.W}승 ${pit.L}패 ${pit.SV}세이브 ${pit.HLD}홀드 · ${ip(pit)}이닝 ERA ${f2(Sim.ERA(pit))} ${pit.K}탈삼진`);
     const tierTxt = { '역대급': '역대급', '특급': '특급', '유망': '유망', '평범': '평범' }[f.tier];
     const grow = { early: '조숙형', std: '표준형', late: '만개형' }[f.growth];
-    const aging = { iron: '철인형', long: '장수형', std: '표준형', early: '조기 쇠퇴형' }[f.aging];
+    const aging = { iron: '철인형', long: '장수형', std: '표준형', early: '조기 쇠퇴형', meteor: '혜성형', flash: '반짝 각성형' }[f.aging];
     return `
       <div class="topbar"><button class="btn small" data-act="home">홈</button><span class="title">은퇴 결산</span><span class="spacer"></span>${devToggle()}</div>
       ${cardHTML(st)}
