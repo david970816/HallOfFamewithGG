@@ -111,7 +111,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     abroad: { svc: 7, faSvc: 9, maxAge: 33, war: 3, npbOVR: 62, mlbOVR: 63, mlbWar: 3, mlbEval: 68, npbEval: 65, npbWar: 2.5,
       // 30차: [현재 OVR, 기대 WAR 지수, 잠재력 OVR, 보정] — 보정은 예전 평가와 같은 눈금이 되도록 맞춘 값
       evalW: [0.35, 0.35, 0.3, 2.7] },
-    usDirect: { ovr: 50, scout: 58,tiers: ['역대급', '특급'] },
+    usDirect: { ovr: 50, scout: 58, tiers: ['역대급', '특급'], p: 0.4 },   // 65차: 조건을 채워도 제안은 40% 확률 (예전 100%)
     // 10차: 늦깎이 각성 — age 범위에서 OVR이 maxOVR 이하이면 매년 p 확률로 잠재·능력치가 크게 뛴다 (한 번)
     // 64차: 유망·평범 등급만, 커리어당 한 번 p 확률로 추첨 → 당첨되면 age 범위 중 한 해에, 그해 OVR이 maxOVR 이하일 때 터진다 (예전: 등급 무관 매년 0.8%)
     bloom: { age: [22, 27], maxOVR: 56, p: 0.05, tiers: ['유망', '평범'], pa: [10, 16], now: [5, 9] },
@@ -1781,7 +1781,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       if (me.grade === 3) {
         // 13차: 잠재력 특급 이상 또는 스카우트 '1라운드 유력'이고 능력치 기준을 넘으면 미국 구단 직행 제안
         const U = BAL.usDirect;
-        if (st.L && st.L.MLB && (U.tiers.indexOf(me.tier) >= 0 || (me.scout.score || 0) >= U.scout) && myOVR(me) >= U.ovr) queue(st, 'usDirect');
+        if (st.L && st.L.MLB && (U.tiers.indexOf(me.tier) >= 0 || (me.scout.score || 0) >= U.scout) && myOVR(me) >= U.ovr && R.chance(U.p == null ? 1 : U.p)) queue(st, 'usDirect');
         queue(st, 'draft', { from: 'hs' });
       }
       me.grade++;

@@ -124,6 +124,14 @@
       f = (f + 1) % 44; drawHero(c, f);
     }, 95);
   }
+  // 65차: 카드 배경색 — 모자(팀 색)와 겹치지 않게. 어두운 팀 색은 밝게, 밝은 팀 색은 어둡게
+  function cardBg(hex) {
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex || '')) return hex;
+    const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const f = lum < 0.3 ? (v => v + (255 - v) * 0.32) : (v => v * 0.58);
+    return `rgb(${f(r) | 0},${f(g) | 0},${f(b) | 0})`;
+  }
   function shade(hex) { const n = parseInt(hex.slice(1), 16); const r = (n >> 16) * 0.7, g = ((n >> 8) & 255) * 0.7, b = (n & 255) * 0.7; return `rgb(${r | 0},${g | 0},${b | 0})`; }
 
   // ---------- 공통 조각 ----------
@@ -570,7 +578,7 @@
     return `
       <div class="card-wrap"><div class="bcard ${App.flipped ? 'flipped' : ''} ${hof ? 'is-hof' : ''} ${troph.length ? 'has-troph' : ''}" data-act="flip">
         <div class="face front ${fcls}"><div class="face-in">
-          <div class="card-top" style="--team:${color}">
+          <div class="card-top" style="--team:${cardBg(color)}">
             <div class="card-emblem">${emblem}</div>
             <div class="card-ovr"><b class="num">${Sim.disp(v.ovr)}</b><span>OVR</span></div>
             <canvas id="card-ava"></canvas>
@@ -1450,7 +1458,7 @@
     const grad = { bronze: '#a8693a', silver: '#8d96a3', gold: '#d4a52f', legend: '#7b2ff7' }[Sim.view(st).grade];
     c.fillStyle = grad; c.fillRect(0, 0, W, H);
     c.fillStyle = '#fbf7ee'; roundRect(c, 24, 24, W - 48, H - 48, 22); c.fill();
-    c.fillStyle = color; roundRect(c, 24, 24, W - 48, 380, 22); c.fill(); c.fillRect(24, 300, W - 48, 104);
+    c.fillStyle = cardBg(color); roundRect(c, 24, 24, W - 48, 380, 22); c.fill(); c.fillRect(24, 300, W - 48, 104);
     const av = document.createElement('canvas'); drawAvatar(av, me.avatar || 1, color);
     c.imageSmoothingEnabled = false; c.drawImage(av, W / 2 - 150, 104, 300, 300);
     c.fillStyle = '#fff'; c.font = '900 64px sans-serif'; c.textAlign = 'right'; c.fillText(String(f.score), W - 60, 110);
@@ -1478,7 +1486,9 @@
   // 39차: 카드는 기록 데이터(cardData)로 그린다 → 은퇴 후 저장 데이터를 지워도 기록실에서 카드를 다시 볼 수 있다
   function cardData(st) {
     const me = st.me, f = st.final, v = Sim.view(st);
-    const isP = me.role === 'P' && !me.twoWay, tw = !!me.twoWay;
+    // 65차: 이도류를 하다 그만뒀어도(twoWayChosen) 투수·타자 기록이 둘 다 있으면 카드 기록표는 둘 다 — 앞면 능력치(stats)만 현재 상태(twNow)를 따른다
+    const twNow = !!me.twoWay, tw = twNow || !!(me.twoWayChosen && f.pit && f.pit.outs > 0 && f.bat && f.bat.PA > 0);
+    const isP = me.role === 'P' && !tw;
     // 55차: 이도류는 타자·투수 기록을 따로 (시즌 WAR도 타자분·투수분으로 나눠서)
     const tableOf = P => {
       const wk = tw ? (P ? 'warP' : 'warB') : 'war';
@@ -1502,7 +1512,7 @@
       grade: v.grade, hof: f.hof && f.hof.in ? f.hof.year : null, ovr: Sim.disp(v.ovr), line: f.oneLine || '',
       info: `${f.mainPos ? mainPosText(f, me) : posText(me)} · ${handText(me)} · ${f.retireAge}세 은퇴 · 통산 WAR ${f1(f.war)}`,
       // 57차: 이도류는 앞면에 주 능력치/반대쪽 능력치를 한 줄에 함께 (막대 = 주, 세로선 = 반대쪽)
-      stats: tw ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
+      stats: twNow ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
         : Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]),
       twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total, cv: 2,
       aw: sortAw(mergeAw((f.awList || []).filter(awKeep))), teams: (f.teams || []).join(' → ').slice(0, 44),   // 64차: 업적 12개 자르기 없앰 — 전부, 개인 수상부터
@@ -1647,7 +1657,7 @@
     // ---- 앞면 ----
     const X = G; frame(X);
     // 64차: 프로필(팀 색 영역)을 430 → 320으로 줄이고, 그 자리에 우승 트로피 진열장
-    c.save(); roundRect(c, X + 14, G + 14, CW - 28, 320, 20); c.clip(); c.fillStyle = color; c.fillRect(X + 14, G + 14, CW - 28, 320); c.restore();
+    c.save(); roundRect(c, X + 14, G + 14, CW - 28, 320, 20); c.clip(); c.fillStyle = cardBg(color); c.fillRect(X + 14, G + 14, CW - 28, 320); c.restore();
     const av = document.createElement('canvas'); drawAvatar(av, d.avatar, color);
     c.imageSmoothingEnabled = false; c.drawImage(av, X + CW / 2 - 115, G + 104, 230, 230);
     c.fillStyle = '#fff'; c.textAlign = 'right'; c.font = '900 72px sans-serif'; c.fillText(String(d.ovr), X + CW - 44, G + 100);
