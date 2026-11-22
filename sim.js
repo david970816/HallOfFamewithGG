@@ -2037,8 +2037,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         && (me.flags.renegoYear || 0) <= st.year - RN.gap) { me.flags.renegoYear = st.year; queue(st, 'renego', { v: Math.round(v), left }); }
     } else {
       if (me.contract) me.contract = null;
-      // 65차: 한 번 FA(또는 KBO 복귀)를 한 선수는 계약이 끝나면 1군 등록일수와 상관없이 다시 FA
-      if ((me.abroad || me.flags.faDone || (me.faAt != null && me.svc >= me.faAt)) && me.age <= 40) { if (!abroadOK && !leaving) queue(st, 'fa'); }
+      if ((me.abroad || (me.faAt != null && me.svc >= me.faAt)) && me.age <= 40) { if (!abroadOK && !leaving) queue(st, 'fa'); }
       else {
         const rate = me.flags.arbWin ? BAL.arbWinRate : BAL.arbRate;
         delete me.flags.arbWin;
@@ -2269,7 +2268,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const from = LCFG[cur.cid].name;
     me.team = teamId; me.lvl = 1; me.lvPen = 0; me.abroad = null; me.rival = null; me.noFirst = 0;
     me.salary = sal; me.contract = { salary: sal, until: st.year + yrs - 1, kind: 'KBO 복귀' };
-    me.faAt = me.svc + yrs; me.flags.faDone = true;   // 65차: 계약이 끝나면 바로 다시 FA (예전: 최소 4시즌 → 계약 끝나고 FA 전까지 원소속팀 1년 연봉 협상만 나왔다)
+    me.faAt = me.svc + Math.max(4, yrs);   // KBO 규약 164조: 해외 복귀 후 4 정규시즌(1군 등록 시즌)을 뛰어야 FA 재취득. 그 전엔 보류권 → 원소속팀과 연봉 협상
     story(st, `${me.age}세, ${from} 생활을 마치고 ${tj(st, teamId, '으로', '로')} 복귀.`);
   }
   // 30차: 해외 스카우트 평가 = 현재 OVR + 기대 WAR 지수(능력치로 본 실제 기여) + 잠재력 OVR 를 종합 (가중치 BAL.abroad.evalW)
@@ -2923,7 +2922,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         if (k === 'home') me.pop += 10;
         if (k === 'stay') me.flags.oneClub = (me.flags.oneClub || 0) + 1;
         me.salary = o.sal; me.contract = { salary: o.sal, until: st.year + o.yrs - 1, kind: 'FA' };
-        me.faAt = me.svc + o.yrs; me.flags.faDone = true;   // 65차: 계약이 끝나면 바로 다시 FA
+        me.faAt = me.svc + Math.max(4, o.yrs);   // KBO 규약 164조: FA 행사 후 4 정규시즌(1군 등록 시즌)을 뛰어야 재취득. 그 전엔 보류권 → 원소속팀과 연봉 협상
         story(st, `${me.age}세 FA, ${tj(st, o.team, '과', '와')} ${faTerms(o)} 계약.`);
         return negoTxt + (k === 'best' ? '새 유니폼, 새 홈구장. 기자회견 플래시가 쏟아졌다.' : k === 'home' ? '어릴 적 응원하던 팀의 유니폼을 입었다.' : '"우리 팀에서 끝까지 함께하자." 팬들이 환호했다.');
       },
