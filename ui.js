@@ -601,17 +601,24 @@
   function histTables(st) {
     const me = st.me, H = st.hist, car = st.car;
     let out = '';
-    const showBat = me.role === 'B' || me.twoWay || H.some(h => h.bat && h.bat.PA > 30);
-    const showPit = me.role === 'P' || me.twoWay;
+    // 65차: 카드 뒷면 기록표를 저장 이미지 카드와 같은 한글 항목·순서로 (투수: 세이브·홀드 포함)
+    //   이도류(또는 이도류를 하다 그만둔 선수)는 타자·투수 둘 다, 시즌 WAR도 타자분·투수분으로
+    const tw = !!(me.twoWay || (me.twoWayChosen && car.pit.outs > 0 && car.bat.PA > 0));
+    const showBat = me.role === 'B' || tw || H.some(h => h.bat && h.bat.PA > 30);
+    const showPit = me.role === 'P' || tw;
+    const wOf = (h, fut, k) => h.war == null || fut ? '-' : f1(tw && h[k] != null ? h[k] : h.war);
+    const td = a => a.map(x => `<td>${x}</td>`).join('');
+    const th = a => `<tr>${a.map(x => `<th>${x}</th>`).join('')}</tr>`;
+    const tm = (h, fut) => `${esc(h.team)}${fut ? '(2)' : ''}`;
     if (showBat) {
-      const rows = H.filter(h => h.bat).map(h => { const b = h.bat; return `<tr class="${b.fut ? 'fut' : ''}"><td>${String(h.year).slice(2)}</td><td>${esc(h.team)}${b.fut ? '(2)' : ''}</td><td>${b.G || '-'}</td><td>${r3(Sim.AVG(b))}</td><td>${b.HR}</td><td>${b.RBI}</td><td>${b.SB}</td><td>${r3(Sim.OPS(b))}</td><td>${h.war == null || b.fut ? '-' : f1(h.war)}</td></tr>`; }).join('');
+      const rows = H.filter(h => h.bat).map(h => { const b = h.bat; return `<tr class="${b.fut ? 'fut' : ''}">${td([String(h.year).slice(2), tm(h, b.fut), b.G || '-', b.PA ? r3(Sim.AVG(b)) : '-', b.AB || 0, b.H || 0, b.HR || 0, b.RBI || 0, b.SB || 0, b.PA ? r3(Sim.OBP(b)) : '-', b.PA ? r3(Sim.OPS(b)) : '-', wOf(h, b.fut, 'warB')])}</tr>`; }).join('');
       const t = car.bat;
-      out += `<table class="stat"><tr><th>연</th><th>팀</th><th>G</th><th>AVG</th><th>HR</th><th>RBI</th><th>SB</th><th>OPS</th><th>WAR</th></tr>${rows || '<tr><td colspan="9" class="muted">기록 없음</td></tr>'}${t.PA ? `<tr class="tot"><td>통산</td><td>1군</td><td>${t.G}</td><td>${r3(Sim.AVG(t))}</td><td>${t.HR}</td><td>${t.RBI}</td><td>${t.SB}</td><td>${r3(Sim.OPS(t))}</td><td>${f1(car.warB)}</td></tr>` : ''}</table>`;
+      out += `<table class="stat">${th(['연도', '팀', '경기', '타율', '타수', '안타', '홈런', '타점', '도루', '출루율', 'OPS', 'WAR'])}${rows || '<tr><td colspan="12" class="muted">기록 없음</td></tr>'}${t.PA ? `<tr class="tot">${td(['통산', '1군', t.G, r3(Sim.AVG(t)), t.AB, t.H, t.HR, t.RBI, t.SB, r3(Sim.OBP(t)), r3(Sim.OPS(t)), f1(tw ? car.warB : car.war)])}</tr>` : ''}</table>`;
     }
     if (showPit) {
-      const rows = H.filter(h => h.pit).map(h => { const p = h.pit; return `<tr class="${p.fut ? 'fut' : ''}"><td>${String(h.year).slice(2)}</td><td>${esc(h.team)}${p.fut ? '(2)' : ''}</td><td>${p.G || '-'}</td><td>${p.W || 0}</td><td>${p.L || 0}</td><td>${p.SV || 0}</td><td>${ip(p)}</td><td>${f2(Sim.ERA(p))}</td><td>${p.K}</td><td>${h.war == null || p.fut ? '-' : f1(h.war)}</td></tr>`; }).join('');
+      const rows = H.filter(h => h.pit).map(h => { const p = h.pit; return `<tr class="${p.fut ? 'fut' : ''}">${td([String(h.year).slice(2), tm(h, p.fut), p.outs ? f2(Sim.ERA(p)) : '-', p.G || '-', p.W || 0, p.L || 0, p.SV || 0, p.HLD || 0, ip(p), p.K || 0, wOf(h, p.fut, 'warP')])}</tr>`; }).join('');
       const t = car.pit;
-      out += `<table class="stat" style="margin-top:8px"><tr><th>연</th><th>팀</th><th>G</th><th>W</th><th>L</th><th>SV</th><th>IP</th><th>ERA</th><th>K</th><th>WAR</th></tr>${rows || '<tr><td colspan="10" class="muted">기록 없음</td></tr>'}${t.outs ? `<tr class="tot"><td>통산</td><td>1군</td><td>${t.G}</td><td>${t.W}</td><td>${t.L}</td><td>${t.SV}</td><td>${ip(t)}</td><td>${f2(Sim.ERA(t))}</td><td>${t.K}</td><td>${f1(car.warP)}</td></tr>` : ''}</table>`;
+      out += `<table class="stat" style="margin-top:8px">${th(['연도', '팀', 'ERA', '경기', '승', '패', '세이브', '홀드', '이닝', '탈삼진', 'WAR'])}${rows || '<tr><td colspan="11" class="muted">기록 없음</td></tr>'}${t.outs ? `<tr class="tot">${td(['통산', '1군', f2(Sim.ERA(t)), t.G, t.W, t.L, t.SV, t.HLD || 0, ip(t), t.K, f1(tw ? car.warP : car.war)])}</tr>` : ''}</table>`;
     }
     return out;
   }
@@ -1486,7 +1493,7 @@
   // 39차: 카드는 기록 데이터(cardData)로 그린다 → 은퇴 후 저장 데이터를 지워도 기록실에서 카드를 다시 볼 수 있다
   function cardData(st) {
     const me = st.me, f = st.final, v = Sim.view(st);
-    // 65차: 이도류를 하다 그만뒀어도(twoWayChosen) 투수·타자 기록이 둘 다 있으면 카드 기록표는 둘 다 — 앞면 능력치(stats)만 현재 상태(twNow)를 따른다
+    // 65차: 이도류를 하다 그만뒀어도(twoWayChosen) 투수·타자 기록이 둘 다 있으면 카드 기록표·앞면 능력치 모두 양쪽
     const twNow = !!me.twoWay, tw = twNow || !!(me.twoWayChosen && f.pit && f.pit.outs > 0 && f.bat && f.bat.PA > 0);
     const isP = me.role === 'P' && !tw;
     // 55차: 이도류는 타자·투수 기록을 따로 (시즌 WAR도 타자분·투수분으로 나눠서)
@@ -1512,7 +1519,7 @@
       grade: v.grade, hof: f.hof && f.hof.in ? f.hof.year : null, ovr: Sim.disp(v.ovr), line: f.oneLine || '',
       info: `${f.mainPos ? mainPosText(f, me) : posText(me)} · ${handText(me)} · ${f.retireAge}세 은퇴 · 통산 WAR ${f1(f.war)}`,
       // 57차: 이도류는 앞면에 주 능력치/반대쪽 능력치를 한 줄에 함께 (막대 = 주, 세로선 = 반대쪽)
-      stats: twNow ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
+      stats: tw ? Sim.mainKeys(me).map((k, i) => { const o = Sim.oppKeys(me)[i]; return [Sim.LABEL[k], Sim.disp(shown[k]), Sim.LABEL[o], Sim.disp(shown[o])]; })
         : Sim.mainKeys(me).map(k => [Sim.LABEL[k], Sim.disp(shown[k])]),
       twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total, cv: 2,
       aw: sortAw(mergeAw((f.awList || []).filter(awKeep))), teams: (f.teams || []).join(' → ').slice(0, 44),   // 64차: 업적 12개 자르기 없앰 — 전부, 개인 수상부터
@@ -2042,7 +2049,7 @@
 
   // 디버그·테스트용 핸들
   window.__app = App;
-  window.__card = { drawCard, cardData, render: () => render() };   // 64차: 카드 확인용
+  window.__card = { drawCard, cardData, histTables, render: () => render() };   // 64차: 카드 확인용
   // 51차: 게임에 처음 들어올 때 아직 안 본 공지가 있으면 팝업으로 알린다
   if (CT.notices.length && isNew('notice')) App.noticePop = true;
   render();

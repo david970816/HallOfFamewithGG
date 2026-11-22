@@ -306,7 +306,8 @@ table.linescore .cur { background: rgba(196,53,43,.12); color: var(--ink); font-
 .back-head { padding: 12px 14px 6px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid var(--ink); }
 .back-head b { font-size: 16px; }
 .back-scroll { flex: 1; overflow: auto; padding: 0 6px 6px; }
-table.stat { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+table.stat { width: 100%; border-collapse: collapse; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.back-scroll table.stat th, .back-scroll table.stat td { padding-left: 3px; padding-right: 3px; }
 table.stat th { position: sticky; top: 0; background: var(--paper); color: var(--mute); font-weight: 700; font-size: 10.5px; text-align: right; padding: 5px 4px; border-bottom: 1px solid var(--line); }
 table.stat td { text-align: right; padding: 4px; border-bottom: 1px solid var(--paper2); white-space: nowrap; }
 table.stat th:first-child, table.stat td:first-child, table.stat th:nth-child(2), table.stat td:nth-child(2) { text-align: left; }

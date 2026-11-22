@@ -229,7 +229,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   // 64차: 표시 능력치에 비례 — 20 = 130km/h, 99 이상 = 170km/h (예전 100 = 163km/h)
   function velo(v) {
     const d = clamp(40 + (v - 30) * 1.25, 20, 99);   // disp()와 같은 눈금 (반올림 전)
-    return Math.round(130 + 40 * (d - 20) / 79);
+    // 65차: 구간별 — 70=150, 80=160, 90=165, 99=170 (40=135, 20=127)
+    const P = [[20, 127], [40, 135], [70, 150], [80, 160], [90, 165], [99, 170]];
+    for (let i = 1; i < P.length; i++) if (d <= P[i][0]) { const [a, x] = P[i - 1], [b, y] = P[i]; return Math.round(x + (y - x) * (d - a) / (b - a)); }
+    return 170;
   }
 
   function baseRuns(H, TB, HR, BB, outs) {
@@ -2034,7 +2037,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         && (me.flags.renegoYear || 0) <= st.year - RN.gap) { me.flags.renegoYear = st.year; queue(st, 'renego', { v: Math.round(v), left }); }
     } else {
       if (me.contract) me.contract = null;
-      if ((me.abroad || (me.faAt != null && me.svc >= me.faAt)) && me.age <= 40) { if (!abroadOK && !leaving) queue(st, 'fa'); }
+      // 65차: 한 번 FA(또는 KBO 복귀)를 한 선수는 계약이 끝나면 1군 등록일수와 상관없이 다시 FA
+      if ((me.abroad || me.flags.faDone || (me.faAt != null && me.svc >= me.faAt)) && me.age <= 40) { if (!abroadOK && !leaving) queue(st, 'fa'); }
       else {
         const rate = me.flags.arbWin ? BAL.arbWinRate : BAL.arbRate;
         delete me.flags.arbWin;
@@ -2265,7 +2269,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const from = LCFG[cur.cid].name;
     me.team = teamId; me.lvl = 1; me.lvPen = 0; me.abroad = null; me.rival = null; me.noFirst = 0;
     me.salary = sal; me.contract = { salary: sal, until: st.year + yrs - 1, kind: 'KBO 복귀' };
-    me.faAt = me.svc + Math.max(4, yrs);
+    me.faAt = me.svc + yrs; me.flags.faDone = true;   // 65차: 계약이 끝나면 바로 다시 FA (예전: 최소 4시즌 → 계약 끝나고 FA 전까지 원소속팀 1년 연봉 협상만 나왔다)
     story(st, `${me.age}세, ${from} 생활을 마치고 ${tj(st, teamId, '으로', '로')} 복귀.`);
   }
   // 30차: 해외 스카우트 평가 = 현재 OVR + 기대 WAR 지수(능력치로 본 실제 기여) + 잠재력 OVR 를 종합 (가중치 BAL.abroad.evalW)
@@ -2875,7 +2879,9 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         offers.sort((a, b) => b.sal - a.sal);
         c.best = offers[0] || null;
         c.off2 = offers[1] || null; c.off3 = offers[2] || null;   // 52차: 상위 3곳까지 선택지로
-        c.stay = { team: me.team, sal: Math.round(Math.max(BAL.minSal, v * R.range(0.95, 1.1) * agentRoll(me)) / 100) * 100, yrs: offerYrs(me, maxY) };
+        // 65차: 원소속팀도 다른 구단과 같은 수준으로 정상 FA 제안 (금액 v×1.0~1.25, 기간은 최고 제안보다 1년 이상 짧지 않게)
+        { const sy = Math.max(offerYrs(me, maxY), c.best ? Math.min(maxY, c.best.yrs - 1) : 1, 1);
+          c.stay = { team: me.team, sal: Math.round(Math.max(BAL.minSal, v * R.range(1.0, 1.25) * agentRoll(me)) / 100) * 100, yrs: sy }; }
         c.home = null;   // 52차: 고향팀 할인 제안 없앰 (고향 대신 연고 지역 → 드래프트 우선 관심)
         // 13차: 해외 FA (KBO 1군 faSvc 시즌 이상·병역 해결)
         c.ab = !me.abroad && cfgOf(st.lg).id === 'KBO' && me.svc >= BAL.abroad.faSvc && me.milDone && me.age <= BAL.abroad.maxAge + 2 ? overseasOffers(st, 'fa').slice(0, 3) : [];
@@ -2917,7 +2923,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         if (k === 'home') me.pop += 10;
         if (k === 'stay') me.flags.oneClub = (me.flags.oneClub || 0) + 1;
         me.salary = o.sal; me.contract = { salary: o.sal, until: st.year + o.yrs - 1, kind: 'FA' };
-        me.faAt = me.svc + Math.max(4, o.yrs);
+        me.faAt = me.svc + o.yrs; me.flags.faDone = true;   // 65차: 계약이 끝나면 바로 다시 FA
         story(st, `${me.age}세 FA, ${tj(st, o.team, '과', '와')} ${faTerms(o)} 계약.`);
         return negoTxt + (k === 'best' ? '새 유니폼, 새 홈구장. 기자회견 플래시가 쏟아졌다.' : k === 'home' ? '어릴 적 응원하던 팀의 유니폼을 입었다.' : '"우리 팀에서 끝까지 함께하자." 팬들이 환호했다.');
       },
@@ -2954,17 +2960,19 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         const RN = BAL.renego, cur = me.contract ? me.contract.salary : me.salary;
         c.cur = cur;
         c.up = Math.round(Math.max(cur * RN.minUp, cur + (c.v - cur) * RN.share) * agentRoll(me) / 100) * 100;   // 남은 기간 연봉만 올린다
-        const ny = Math.max(c.left + 1, offerYrs(me, 5));
-        c.ext = { yrs: ny, sal: Math.round(Math.max(c.up, c.v * R.range(0.85, 0.95)) * agentRoll(me) / 100) * 100 };   // 기간도 늘리는 새 다년계약
+        // 65차: FA를 넘기는 계약은 없다 — 새 계약은 FA 직전 시즌까지만 (남은 계약보다 길 때만 선택지)
+        const faLeft = (me.faAt == null ? c.left : me.faAt - me.svc), ny = Math.min(faLeft, Math.max(c.left + 1, offerYrs(me, 5)));
+        c.ext = ny > c.left ? { yrs: ny, sal: Math.round(Math.max(c.up, c.v * R.range(0.85, 0.95)) * agentRoll(me) / 100) * 100 } : null;   // 기간도 늘리는 새 다년계약
       },
       text: (st, me, c) => `"계약 기간이 ${c.left}년 남았지만, 지금 활약에 비하면 연봉이 너무 적다. 우리가 먼저 다시 맞춰 주겠다." 지금 연봉은 연 ${man(c.cur)}.`,
-      ch: (st, me, c) => [`남은 ${c.left}년 연봉을 올린다 (연 ${man(c.up)})`, `새 ${c.ext.yrs}년 계약으로 바꾼다 (연 ${man(c.ext.sal)}, FA는 그만큼 늦어진다)`, '지금 계약대로 간다'],
+      ch: (st, me, c) => [`남은 ${c.left}년 연봉을 올린다 (연 ${man(c.up)})`, c.ext ? `FA 전까지 ${c.ext.yrs}년 새 계약으로 바꾼다 (연 ${man(c.ext.sal)})` : null, '지금 계약대로 간다'].filter(Boolean),
       safe: 0,
       res: (st, me, i, c) => {
+        if (!c.ext && i === 1) i = 2;
         if (i === 0) { me.contract.salary = c.up; me.salary = c.up; me.trust += 3; story(st, `${me.age}세, 구단과 연봉 재협상. 남은 ${c.left}년 연 ${man(c.up)}.`); return '구단이 먼저 손을 내밀었다. 사인은 금방 끝났다.'; }
         if (i === 1) {
           me.contract = { salary: c.ext.sal, until: st.year + c.ext.yrs - 1, kind: '다년' }; me.salary = c.ext.sal;
-          me.faAt = Math.max(me.faAt || 0, me.svc + c.ext.yrs); me.trust += 5; me.flags.oneClub = (me.flags.oneClub || 0) + 1;
+          me.trust += 5; me.flags.oneClub = (me.flags.oneClub || 0) + 1;
           story(st, `${me.age}세, 계약 기간 중 ${c.ext.yrs}년 새 계약. 연 ${man(c.ext.sal)}.`); return '"여기서 오래 함께하자." 단장이 악수를 청했다.';
         }
         me.trust += 1; return '"계약은 계약이죠. 지금 조건대로 뛰겠습니다." 구단이 고개를 끄덕였다.';
@@ -2972,12 +2980,13 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     },
     {
       id: 'extension', forced: true, cat: '커리어', who: '단장',
-      prep: (st, me, c) => { c.sal = Math.round(marketValue(me) * 0.8 * agentRoll(me) / 100) * 100; },   // 64차: 에이전시
-      text: (st, me, c) => `"FA까지 기다리지 말고 5년 장기계약 어떻습니까? 연 ${man(c.sal)} 보장합니다."`,
-      ch: ['5년 계약에 서명', 'FA까지 기다린다'], safe: 0,
+      // 65차: FA를 넘기는 계약은 없다 — 연장계약도 FA 직전 시즌까지 (FA는 늦추지 않는다)
+      prep: (st, me, c) => { c.sal = Math.round(marketValue(me) * 0.8 * agentRoll(me) / 100) * 100; c.yrs = Math.max(1, Math.min(5, (me.faAt || 99) - me.svc)); },   // 64차: 에이전시
+      text: (st, me, c) => `"FA까지 남은 ${c.yrs}년, 연봉 협상 없이 연 ${man(c.sal)}으로 고정 계약 어떻습니까?"`,
+      ch: (st, me, c) => [`${c.yrs}년 계약에 서명`, '매년 연봉 협상을 한다'], safe: 0,
       res: (st, me, i, c) => {
         me.flags.extDone = true;
-        if (i === 0) { me.salary = c.sal; me.contract = { salary: c.sal, until: st.year + 4, kind: '다년' }; me.faAt = Math.max(me.faAt || 0, me.svc + 5); me.flags.oneClub = (me.flags.oneClub || 0) + 1; story(st, `${me.age}세, 5년 연장계약. 연 ${man(c.sal)}.`); return '사인 한 번에 미래 5년이 정해졌다.'; }
+        if (i === 0) { me.salary = c.sal; me.contract = { salary: c.sal, until: st.year + c.yrs - 1, kind: '다년' }; me.flags.oneClub = (me.flags.oneClub || 0) + 1; story(st, `${me.age}세, FA 전까지 ${c.yrs}년 다년계약. 연 ${man(c.sal)}.`); return `FA까지 ${c.yrs}년, 연봉 걱정은 없다.`; }
         return '"시장에서 제 가치를 확인해 보고 싶습니다."';
       },
     },
