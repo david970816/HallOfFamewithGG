@@ -76,6 +76,8 @@ input.t, select.t { width: 100%; padding: 10px 12px; border-radius: 10px; border
 .home-hero h1 { font-size: 34px; margin: 6px 0 8px; letter-spacing: -.02em; }
 .hero-pix { display: block; width: min(100%, 384px); aspect-ratio: 64 / 26; margin: 0 auto 10px; image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 12px; box-shadow: var(--shadow); }
 .home-hero p { color: var(--ink2); margin: 0 0 22px; }
+.home-hero h1 .nw { white-space: nowrap; }   /* 좁은 화면에서는 콜론 뒤에서만 줄바꿈 */
+.home-hero .hero-sub { font-size: 12.5px; line-height: 1.55; color: var(--mute); word-break: keep-all; }
 .home-actions { display: grid; gap: 10px; }
 .rec-item { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px dashed var(--line); }
 .rec-item:last-child { border: 0; }
