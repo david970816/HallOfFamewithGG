@@ -12,8 +12,6 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
     del(k) { try { localStorage.removeItem(k); } catch (e) { } },
   };
-  // 66차(시안): 야구장 테마 — 지금은 로컬 미리보기에서만 켠다 (확정되면 조건을 없앤다)
-  const PARK = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || store.get('dugout_theme', '') === 'park';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   const KEY_ADMIN = 'dugout_admin2';
@@ -86,17 +84,33 @@
   function drawSprite(c, rows, x, y, flip) {
     rows.forEach((row, j) => { for (let i = 0; i < row.length; i++) { const ch = row[flip ? row.length - 1 - i : i]; if (ch !== '.') { c.fillStyle = PIX[ch]; c.fillRect(x + i, y + j, 1, 1); } } });
   }
-  function drawHero(c, f) {
+  // 66차: 시간대별 하늘 —기기 시각 기준 낮(7~16시) · 저녁(17~19시) · 밤(그 밖). window.__sky 로 미리보기 강제 가능
+  const SKY = {
+    day: { top: '#6fb6e8', band: '#9fd0f2', pole: '#8a97ad', lamp: '#d8dde6', fence: '#2f7a4c', fenceTop: '#3c8b5a', star: 0 },
+    dusk: { top: '#3b3562', band: '#e98a5c', pole: '#6d6a8a', lamp: '#fff3c4', fence: '#28603f', fenceTop: '#34744e', star: 0.5 },
+    night: { top: '#16213a', band: '#1d2c4d', pole: '#5b6b8c', lamp: '#fff3c4', fence: '#245a3a', fenceTop: '#2e6b46', star: 1 },
+  };
+  function skyNow() { if (window.__sky && SKY[window.__sky]) return window.__sky; const h = new Date().getHours(); return h >= 7 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'dusk' : 'night'; }
+  function drawHero(c, f, T) {
     c.clearRect(0, 0, 64, 26);
-    // 밤하늘·조명탑·외야 펜스
-    c.fillStyle = '#16213a'; c.fillRect(0, 0, 64, 26);
-    c.fillStyle = '#1d2c4d'; c.fillRect(0, 10, 64, 8);
-    c.fillStyle = '#5b6b8c'; c.fillRect(2, 4, 1, 14); c.fillRect(61, 4, 1, 14);
-    c.fillStyle = '#fff3c4'; c.fillRect(1, 3, 3, 1); c.fillRect(60, 3, 3, 1);
-    c.fillStyle = '#245a3a'; c.fillRect(0, 17, 64, 5);
-    c.fillStyle = '#2e6b46'; c.fillRect(0, 17, 64, 1);
-    // 별 (반짝임)
-    STARS.forEach(([x, y], i) => { const on = (f + i * 7) % 20 < 14; c.fillStyle = '#d4a52f'; c.fillRect(x, y, 1, 1); if (on) { c.fillRect(x - 1, y, 1, 1); c.fillRect(x + 1, y, 1, 1); c.fillRect(x, y - 1, 1, 1); c.fillRect(x, y + 1, 1, 1); } });
+    const sk = skyNow(), S = SKY[sk]; T = T || 0;
+    // 하늘·조명탑·외야 펜스
+    c.fillStyle = S.top; c.fillRect(0, 0, 64, 26);
+    c.fillStyle = S.band; c.fillRect(0, 10, 64, 8);
+    if (sk === 'dusk') { c.fillStyle = '#c0607a'; c.fillRect(0, 8, 64, 2); c.fillStyle = '#f5b26b'; c.fillRect(0, 15, 64, 2); }
+    if (sk === 'day') {   // 해 + 천천히 흐르는 구름
+      c.fillStyle = '#fff3b0'; c.fillRect(48, 2, 4, 4); c.fillRect(47, 3, 6, 2); c.fillRect(49, 1, 2, 6);
+      const cx1 = ((T * 0.12) % 84) - 14, cx2 = ((T * 0.08 + 40) % 84) - 14;
+      c.fillStyle = '#ffffff'; [[cx1, 4], [cx2, 8]].forEach(([x, y]) => { x = Math.round(x); c.fillRect(x, y, 8, 2); c.fillRect(x + 2, y - 1, 4, 1); });
+    }
+    c.fillStyle = S.pole; c.fillRect(2, 4, 1, 14); c.fillRect(61, 4, 1, 14);
+    c.fillStyle = S.lamp; c.fillRect(1, 3, 3, 1); c.fillRect(60, 3, 3, 1);
+    c.fillStyle = S.fence; c.fillRect(0, 17, 64, 5);
+    c.fillStyle = S.fenceTop; c.fillRect(0, 17, 64, 1);
+    // 별 (반짝임) — 밤에만, 저녁엔 몇 개만
+    if (S.star) STARS.forEach(([x, y], i) => { if (S.star < 1 && i % 2) return; const on = (f + i * 7) % 20 < 14; c.fillStyle = '#d4a52f'; c.fillRect(x, y, 1, 1); if (on) { c.fillRect(x - 1, y, 1, 1); c.fillRect(x + 1, y, 1, 1); c.fillRect(x, y - 1, 1, 1); c.fillRect(x, y + 1, 1, 1); } });
+    // 별똥별 — 밤에 약 9초마다 한 번, 왼쪽 위에서 오른쪽 아래로
+    if (sk === 'night') { const k = T % 96; if (k < 8) { const sx = 10 + k * 4, sy = 1 + k; c.fillStyle = '#ffffff'; c.fillRect(sx, sy, 1, 1); c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(sx - 1, sy, 1, 1); c.fillStyle = 'rgba(255,255,255,.3)'; c.fillRect(sx - 2, sy - 1, 1, 1); c.fillRect(sx - 3, sy - 1, 1, 1); } }
     // 땅: 잔디·마운드·홈 주변 흙
     c.fillStyle = '#3f8f4f'; c.fillRect(0, 22, 64, 4);
     c.fillStyle = '#4fa35f'; for (let x = 0; x < 64; x += 4) c.fillRect(x + ((x / 4) % 2), 22, 2, 1);
@@ -119,11 +133,11 @@
     const c = cv.getContext('2d');
     if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { drawHero(c, 22); return; }
     clearInterval(App._heroT);
-    let f = 0;
-    drawHero(c, f);
+    let f = 0, T = 0;
+    drawHero(c, f, T);
     App._heroT = setInterval(() => {
       if (App.view !== 'home' || !document.body.contains(cv)) { clearInterval(App._heroT); return; }
-      f = (f + 1) % 44; drawHero(c, f);
+      f = (f + 1) % 44; T++; drawHero(c, f, T);
     }, 95);
   }
   // 65차: 카드 배경색 — 모자(팀 색)와 겹치지 않게. 어두운 팀 색은 밝게, 밝은 팀 색은 어둡게
@@ -656,7 +670,7 @@
     return pageShell('골든글러브 라인업', `${tabs}<div class="panel lu-panel"><div class="tiny muted" style="margin-bottom:8px">${head} · ${esc(sub)} · 이도류는 처음 고른 포지션</div>${field}</div>`);
   }
   function drawPodium() {
-    document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
+    document.querySelectorAll('canvas.pod-av, canvas.cont-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
     document.querySelectorAll('canvas.badge-pix').forEach(cv => { const b = BADGES.find(x => x.id === cv.dataset.badge); if (b) drawBadge(cv, b, cv.dataset.on === '1'); });   // 65차: 뱃지 도트
     document.querySelectorAll('.badge-grid').forEach(dragScroll);
     if (App.view === 'home' && Date.now() - (App._judgeAt || 0) > 60000) { App._judgeAt = Date.now(); judgeSeasonBadges(); backfillTop50(); }
@@ -690,6 +704,22 @@
     if (r && r.card) openCard(r.name, r.card);
   }
 
+  // 66차: 이어하기 카드 —진행 중인 내 선수를 작은 카드로 (아바타 · 이름 · 등번호 · 나이 · 소속 · OVR)
+  function contCard(sv) {
+    const me = sv.me;
+    let ovr = null, where = '', color = '#3d4a5c';
+    try { ovr = Sim.disp(Sim.view(sv).ovr); } catch (e) { }
+    try {
+      color = me.team ? TEAMCOLOR(me.team) : color;
+      where = me.stage === 'pro' ? `${Sim.teamName(sv, me.team)} · ${me.lvl === 1 ? '1군' : '2군'}` : me.stage === 'hs' ? `고교 ${Math.min(3, me.grade)}학년` : me.stage === 'univ' ? '대학' : me.stage === 'mil' ? '군 복무' : me.stage === 'indie' ? '독립리그' : '';
+    } catch (e) { }
+    return `<button class="cont-card" data-act="continue" style="--team:${cardBg(color)}">
+      <span class="cont-av-wrap"><canvas class="cont-av" data-av="${me.avatar || 1}" data-color="${color}" width="16" height="16"></canvas></span>
+      <span class="cont-txt"><span class="cont-k">이어하기</span><b>${esc(me.name)} <i class="num">#${me.num}</i></b><span class="cont-sub">${me.age}세${where ? ` · ${esc(where)}` : ''}</span></span>
+      ${ovr != null ? `<span class="cont-ovr"><b class="num">${ovr}</b><i>OVR</i></span>` : ''}
+      <span class="cont-go">▶</span>
+    </button>`;
+  }
   function viewHome() {
     const sv = loadSave();
     const recs = store.get(KEY_REC, []);
@@ -701,7 +731,7 @@
         <p class="hero-sub">골글 들고 명전까지,<br>고교 야구부 벤치 끝자리에서 시작하는<br>야구선수 한 명의 인생</p>
       </div>
       <div class="home-actions">
-        ${sv && !sv.done ? `<button class="btn go block" data-act="continue">이어하기 · ${esc(sv.me.name)} (${sv.me.age}세)</button>` : ''}
+        ${sv && !sv.done ? contCard(sv) : ''}
         <button class="btn ${sv && !sv.done ? '' : 'go'} block" data-act="new">새 인생 시작</button>
         <button class="btn block" data-act="page" data-v="lineup">🧤 골든글러브 라인업</button>
         ${App.admin ? `<button class="btn block small ghost" data-act="admin">${App.dev ? '<span class="admin-on">관리자 모드 ON</span> · 끄기' : '관리자 모드 들어가기'}</button>` : ''}
@@ -1295,25 +1325,9 @@
       <div class="ld-year num">${L.year}</div>
       <div class="ld-sub">${L.stage === 'post' ? '포스팅 진행 중' : L.stage === 'pro' ? '정규시즌 진행 중' : '시즌 진행 중'}</div>
       <div class="ld-ball" aria-hidden="true"></div>
-      ${PARK ? diamondHTML(L.p) : `<div class="ld-bar"><span style="width:${Math.round(L.p * 100)}%"></span></div>`}
+      <div class="ld-bar"><span style="width:${Math.round(L.p * 100)}%"></span></div>
       <div class="ld-msg">${esc(msgs[i])}…</div>
     </div>`;
-  }
-  // 66차(시안): 시즌 진행을 다이아몬드로 — 홈 → 1루 → 2루 → 3루 → 홈을 주자가 돈다
-  const DIA = [[60, 104], [104, 60], [60, 16], [16, 60], [60, 104]];   // 홈·1루·2루·3루·홈 (120×120)
-  function diaPos(p) { const t = Math.max(0, Math.min(1, p)) * 4, i = Math.min(3, Math.floor(t)), f = t - i, a = DIA[i], b = DIA[i + 1]; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
-  function diamondHTML(p) {
-    const [x, y] = diaPos(p), reached = Math.floor(Math.min(1, p) * 4);
-    const base = (i, [bx, by]) => `<rect class="dia-base ${i <= reached && i > 0 ? 'on' : ''}" x="${bx - 6}" y="${by - 6}" width="12" height="12" transform="rotate(45 ${bx} ${by})"/>`;
-    return `<svg class="ld-dia" viewBox="0 0 120 120" aria-hidden="true">
-      <polygon class="dia-dirt" points="60,4 116,60 60,116 4,60"/>
-      <polygon class="dia-grass" points="60,30 90,60 60,90 30,60"/>
-      <polyline class="dia-line" points="60,104 104,60 60,16 16,60 60,104"/>
-      ${base(1, DIA[1])}${base(2, DIA[2])}${base(3, DIA[3])}
-      <polygon class="dia-home" points="54,100 66,100 66,106 60,111 54,106"/>
-      <circle class="dia-mound" cx="60" cy="60" r="5"/>
-      <circle class="dia-runner" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5"/>
-    </svg>`;
   }
   // opts.pauseAt(0~1)에서 opts.onPause(resume)를 부르고 멈춘다 → resume()을 부르면 이어서 진행 (17차: 시즌 중 국가대표)
   function startLoading(onDone, stageOver, opts) {
@@ -1327,10 +1341,7 @@
       if (App.view !== 'loading' || paused) return;
       App.loading.p = Math.min(1, base + (performance.now() - t0) / dur);
       const bar = document.querySelector('.ld-bar span'), msg = document.querySelector('.ld-msg');
-      if (bar) bar.style.width = Math.round(App.loading.p * 100) + '%';
-      const run = document.querySelector('.dia-runner');
-      if (run) { const [x, y] = diaPos(App.loading.p), n = Math.floor(Math.min(1, App.loading.p) * 4); run.setAttribute('cx', x.toFixed(1)); run.setAttribute('cy', y.toFixed(1)); document.querySelectorAll('.dia-base').forEach((b, i) => b.classList.toggle('on', i + 1 <= n)); }
-      if (msg) { const m = LOAD_MSG[App.loading.stage] || LOAD_MSG.pro; msg.textContent = m[Math.min(m.length - 1, Math.floor(App.loading.p * m.length))] + '…'; }
+      if (bar) bar.style.width = Math.round(App.loading.p * 100) + '%';      if (msg) { const m = LOAD_MSG[App.loading.stage] || LOAD_MSG.pro; msg.textContent = m[Math.min(m.length - 1, Math.floor(App.loading.p * m.length))] + '…'; }
       if (opts.pauseAt != null && App.loading.p >= opts.pauseAt) {
         const pa = opts.pauseAt; opts.pauseAt = null; paused = true;
         opts.onPause(() => { App.view = 'loading'; App.loading.p = pa; render(); base = pa; t0 = performance.now(); paused = false; setTimeout(tick, 33); });
@@ -1472,7 +1483,6 @@
     if (!it) { $modal.innerHTML = ''; return; }
     const who = it.who || '';
     $modal.innerHTML = `<div class="overlay"><div class="sheet">
-      ${PARK ? `<div class="sheet-strip"><span>📋 ${esc(it.cat || '결정')}</span><span class="dots">● ● ●</span></div>` : ''}
       <div class="speaker"><div class="avatar-sq">${esc(who.slice(0, 1))}</div><div><b>${esc(who)}</b><span class="chip">${esc(it.cat || '')}</span></div><span class="spacer"></span><span class="tiny muted">${it.id === 'intlCall' ? `${st.year - 1}년 시즌 중 · ${st.me.age - 1}세` : it.id === 'draft' || it.id === 'usDirect' ? `${st.year - 1}년 ${it.id === 'draft' ? '9월' : '여름'} · ${st.me.age - 1}세` : `${st.year - 1}년 겨울 · ${st.me.age}세`}</span></div>
       <div class="bubble">${esc(it.text)}</div>
       ${App.reaction == null ? `<div class="choices">${it.ch.map((c, i) => `<button class="btn block" data-act="choose" data-v="${i}">${esc(c)}</button>`).join('')}</div>` : ''}
@@ -2071,7 +2081,6 @@
   // ================================================================
   function render() {
     let html;
-    if (PARK) document.documentElement.classList.toggle('park', App.view !== 'home');   // 66차(시안): 홈 화면은 원래 모습 그대로
     if (App.view === 'home') html = viewHome();
     else if (App.view === 'create') html = viewCreate();
     else if (App.view === 'main') html = viewMain();
