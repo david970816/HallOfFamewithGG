@@ -539,7 +539,7 @@
     const mine = myBadges(), got = BADGES.filter(x => mine[x.id]).length;
     const waitL = store.get(KEY_BADGE_WAIT, []), waiting = id => Array.isArray(waitL) && waitL.some(w => w.id === id);
     const day = t => { const d = new Date(t); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`; };
-    return `<div class="panel badge-panel"><h3>내 뱃지 <span class="tiny muted">${got} / ${BADGES.length} · 옆으로 밀어서 보기</span></h3>
+    return `<div class="panel badge-panel"><h3>내 뱃지 <span class="tiny muted">${got} / ${BADGES.length} · 기기 기준으로 기록됩니다 · 옆으로 밀어서 보기</span></h3>
       <div class="badge-grid">${BADGES.filter(x => mine[x.id]).sort((a, b) => mine[b.id].at - mine[a.id].at).concat(BADGES.filter(x => !mine[x.id])).map(x => {   /* 획득한 것(최근 순) → 미획득 순서 */ const m = mine[x.id]; return `<div class="badge ${m ? 'on' : 'off'} tone-${x.tone}">
         <canvas class="badge-pix" data-badge="${x.id}" data-on="${m ? 1 : 0}" width="16" height="16"></canvas>
         <b class="badge-name">${esc(x.name)}</b>
