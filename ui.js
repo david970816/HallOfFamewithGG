@@ -332,10 +332,205 @@
             f.score > cutA ? lbFetch(`top50?select=id&score=gt.${f.score}&limit=${ALL_MAX}`) : null,
             lbFetch(`top50?select=id&created_at=gte.${since}&score=gt.${f.score}&limit=${SEASON_MAX}`),
           ]))
-          .then(([ra, rs]) => { st._lb = 'in'; st._lbRank = ra ? ra.length + 1 : 0; st._lbSRank = rs ? rs.length + 1 : 0; });
+          .then(([ra, rs]) => {
+            st._lb = 'in'; st._lbRank = ra ? ra.length + 1 : 0; st._lbSRank = rs ? rs.length + 1 : 0;
+            // 65차: 뱃지 — 역대는 바로, 시즌은 마감(한국 시간 밤 12시) 뒤 판정
+            if (st._lbRank && st._lbRank <= ALL_MAX) giveBadge(st, 'top50', { rank: st._lbRank });
+            if (p && lp && f.score > cutP) giveBadge(st, 'ggAll', { pos: lp });
+            const wi = { score: f.score, start: S.start, end: S.end, who: f.name };
+            if (st._lbSRank && st._lbSRank <= SEASON_MAX) waitBadge('season50', wi);
+            if (ps && lp && f.score > cutPS) waitBadge('ggSeason', Object.assign({ lp }, wi));
+          });
       })
       .catch(() => { st._lb = 'error'; })
       .then(() => { App.lb.at = 0; if (App.view === 'retire' && App.st === st) render(); });   // 홈으로 가면 순위표를 새로 받는다
+  }
+  // ---------- 65차: 뱃지 — 이 기기(브라우저)에만 저장, 서버에는 안 올린다 ----------
+  //   새 뱃지는 BADGES에 한 줄 추가 + 조건이 되는 곳에서 giveBadge(st, id) 한 번
+  const KEY_BADGE = 'dugout_badges';
+  //   ico: 10×10 도트 그림 (W 흰색 · K 진한색 · Y 금색 · R 빨강 · B 파랑 · G 초록 · N 갈색 · O 주황 · . 빈칸)
+  //   tone: 메달 색 · chk(st): 은퇴할 때 검사 (top50은 온라인 순위 확인 뒤 따로 준다)
+  const AWL = st => (st.final && st.final.awList) || (st.car && st.car.awList) || [];
+  const BADGES = [
+    { id: 'top50', name: '명예의 전당 TOP50', desc: '역대 최고점수 TOP50 순위표에 이름을 올린다', tone: 'gold',
+      ico: ['..........', '.WWW.WWW..', '.W...W.W..', '.WWW.W.W..', '...W.W.W..', '.WWW.WWW..', '..........', 'Y.Y.Y.Y.Y.', '.Y.Y.Y.Y..', '..........'] },
+    { id: 'hof', name: '명예의 전당 헌액', desc: '명예의 전당에 헌액된다', tone: 'gold', chk: st => !!(st.final.hof && st.final.hof.in),
+      ico: ['..........', 'W...WW...W', 'WW..WW..WW', 'WWW.WW.WWW', 'WWWWWWWWWW', 'WRWWBBWWRW', 'WWWWWWWWWW', 'KKKKKKKKKK', '..........', '..........'] },
+    { id: 'mvp', name: '첫 MVP', desc: '정규시즌 MVP를 처음 받는다', tone: 'blue', chk: st => (st.car.aw.MVP || 0) >= 1,
+      ico: ['....WW....', '....WW....', '...WWWW...', 'WWWWWWWWWW', '.WWWWWWWW.', '..WWWWWW..', '..WWWWWW..', '.WWW..WWW.', '.WW....WW.', '..........'] },
+    { id: 'mvp4', name: 'MVP 4회', desc: '한 커리어에서 정규시즌 MVP를 4번 받는다', tone: 'purple', chk: st => (st.car.aw.MVP || 0) >= 4,
+      ico: ['.W....W...', 'WWW..WWW..', '.W....W...', '..........', '.W....W...', 'WWW..WWW..', '.W....W...', '..........', '..........', '..........'] },
+    { id: 'gg5', name: '황금 장갑', desc: '골든글러브를 5번 받는다', tone: 'gold', chk: st => (st.car.aw.GG || 0) >= 5,
+      ico: ['.N.N.N....', '.N.N.N.N..', '.NNNNNNN..', '.NNNNNNN..', 'NNNNNNNN..', 'NNYNNNNN..', '.NNNNNNN..', '..NNNNN...', '...NNN....', '..........'] },
+    { id: 'ring', name: '첫 우승 반지', desc: '소속팀이 리그 우승(한국·재팬·월드시리즈)을 차지한다', tone: 'red', chk: st => (st.car.aw.KS || 0) >= 1,
+      ico: ['...YYYY...', '..Y....Y..', '.Y......Y.', '.Y......Y.', '.Y......Y.', '..Y....Y..', '...YYYY...', '...WWWW...', '....WW....', '..........'] },
+    { id: 'ws', name: '월드시리즈 챔피언', desc: '월드시리즈에서 우승한다', tone: 'navy', chk: st => AWL(st).some(a => /월드시리즈 우승/.test(a)),
+      ico: ['..........', '.WWWWWWWW.', 'WW.WWWW.WW', 'WW.WWWW.WW', '.WWWWWWWW.', '..WWWWWW..', '....WW....', '....WW....', '..YYYYYY..', '..........'] },
+    { id: 'wbc', name: '세계 정상', desc: 'WBC에서 우승한다', tone: 'blue', chk: st => AWL(st).some(a => /WBC.*우승/.test(a)),
+      ico: ['...WWWW...', '..WGGWWW..', '.WGGGWWGW.', '.WGGWWGGW.', '.WWWWGGGW.', '.WGWWWGGW.', '.WGGWWWWW.', '..WGGWWW..', '...WWWW...', '..........'] },
+    { id: 'og', name: '올림픽 금메달', desc: '올림픽에서 금메달을 딴다', tone: 'red', chk: st => AWL(st).some(a => /올림픽.*금메달/.test(a)),
+      ico: ['.BB....RR.', '..BB..RR..', '...BBRR...', '....YY....', '...YYYY...', '..YYWYYY..', '..YYYYYY..', '...YYYY...', '....YY....', '..........'] },
+    { id: 'tw', name: '이도류', desc: '한 시즌에 타자·투수 WAR를 모두 기준 이상 기록한다', tone: 'purple', chk: st => (st.car.twoWaySeasons || 0) >= 1,
+      ico: ['N.......WW', '.N.....WRW', '..N....WWW', '...N......', '....N.....', '.....N....', '......N...', '.......N..', '........NN', '.........N'] },
+    { id: 'war100', name: '통산 WAR 100', desc: '통산 WAR 100을 넘긴다', tone: 'green', chk: st => (st.car.war || 0) >= 100,
+      ico: ['..........', '..........', '.W.WWW.WWW', 'WW.W.W.W.W', '.W.W.W.W.W', '.W.W.W.W.W', '.W.WWW.WWW', '..........', '..........', '..........'] },
+    { id: 'hr500', name: '500홈런', desc: '통산 홈런 500개를 친다', tone: 'red', chk: st => (st.car.bat.HR || 0) >= 500,
+      ico: ['........WW', '.......W.W', '......W..W', '.........W', '.....N....', '....N.....', '...N......', '..N.......', '.NN.......', 'NN........'] },
+    { id: 'hit3000', name: '3000안타', desc: '통산 안타 3,000개를 친다', tone: 'blue', chk: st => (st.car.bat.H || 0) >= 3000,
+      ico: ['...WWWW...', '..WWWWWW..', '.WRWWWWRW.', '.RWWWWWWR.', '.RWWWWWWR.', '.RWWWWWWR.', '.WRWWWWRW.', '..WWWWWW..', '...WWWW...', '..........'] },
+    { id: 'w200', name: '200승', desc: '통산 200승을 거둔다', tone: 'navy', chk: st => (st.car.pit.W || 0) >= 200,
+      ico: ['..........', 'W...W...W.', 'W...W...W.', 'W..WWW..W.', 'W.W...W.W.', 'WW.....WW.', 'W.......W.', '..........', 'YYYYYYYYY.', '..........'] },
+    { id: 'sv400', name: '수호신', desc: '통산 400세이브를 올린다', tone: 'green', chk: st => (st.car.pit.SV || 0) >= 400,
+      ico: ['.WWWWWWWW.', '.WWWWWWWW.', '.WWWYYWWW.', '.WWYYYYWW.', '.WWWYYWWW.', '..WWWWWW..', '..WWWWWW..', '...WWWW...', '....WW....', '..........'] },
+    { id: 'k3000', name: '닥터 K', desc: '통산 탈삼진 3,000개를 잡는다', tone: 'red', chk: st => (st.car.pit.K || 0) >= 3000,
+      ico: ['.WW...WW..', '.WW..WW...', '.WW.WW....', '.WWWW.....', '.WWWW.....', '.WW.WW....', '.WW..WW...', '.WW...WW..', '..........', '..........'] },
+    { id: 'oneclub', name: '원클럽맨', desc: '한 팀에서만 15시즌 이상 뛰고 은퇴한다', tone: 'red', chk: st => (st.final.teams || []).length === 1 && (st.final.seasons || 0) >= 15,
+      ico: ['..........', '.WW....WW.', 'WWWW..WWWW', 'WWWWWWWWWW', 'WWWWWWWWWW', '.WWWWWWWW.', '..WWWWWW..', '...WWWW...', '....WW....', '..........'] },
+    { id: 'mlb', name: '빅리거', desc: '메이저리그 1군 무대를 밟는다', tone: 'navy', chk: st => (st.hist || []).some(h => h.lg === 'MLB' && h.lvl === '1군'),
+      ico: ['....W.....', '....WW....', 'W...WW....', 'WWWWWWWWW.', 'WWWWWWWWWW', 'W...WW....', '....WW....', '....W.....', '..........', '..........'] },
+    { id: 'roy', name: '신인왕', desc: '신인왕을 받는다', tone: 'gold', chk: st => (st.car.aw.ROY || 0) >= 1,
+      ico: ['...GG.GG..', '..GGG.GGG.', '..GGGNGGG.', '....N.....', '....N.....', '....N.....', '..NNNNNN..', '..NNNNNN..', '...NNNN...', '..........'] },
+    { id: 'underdog', name: '흙수저 신화', desc: '평범 등급으로 시작해 명예의 전당에 오른다', tone: 'orange', chk: st => st.me.tier === '평범' && !!(st.final.hof && st.final.hof.in),
+      ico: ['....Y.....', '...YY.....', '...YYY....', '..YYOY.Y..', '..YOOYYY..', '.YOOOOYY..', '.YOORROY..', '.YOORROY..', '..YOOOY...', '...YYY....'] },
+    // ---- 2차 추가분 ----
+    { id: 'unanimous', name: '만장일치', desc: '명예의 전당 헌액 기준을 7개 이상 채우고 헌액된다', tone: 'gold', chk: st => !!(st.final.hof && st.final.hof.in && (st.final.hof.why || []).length >= 7),
+      ico: ['..........', '.........W', '........WW', '.......WW.', 'W.....WW..', 'WW...WW...', '.WW.WW....', '..WWW.....', '...W......', '..........'] },
+    { id: 'season50', name: '시즌 TOP50', desc: '오늘 시즌 순위(TOP50)에 밤 11시 59분 마감까지 남는다', tone: 'blue', season: true,
+      ico: ['...WWWW...', '..W.WW.W..', '.W..WW..W.', '.W..WWW.W.', '.W......W.', '..W....W..', '...WWWW...', '..........', 'Y.Y.Y.Y.Y.', '..........'] },
+    { id: 'ggAll', name: '역대 골든글러브', desc: '은퇴할 때 역대 골든글러브 라인업(포지션별 1위)에 든다', tone: 'red',
+      ico: ['.Y.Y.Y....', '.Y.Y.Y.Y..', '.YYYYYYY..', '.YYYYYYY..', 'YYYYYYYY..', 'YYWYYYYY..', '.YYYYYYY..', '..YYYYY...', '...YYY....', '..........'] },
+    { id: 'ggSeason', name: '시즌 골든글러브', desc: '오늘 시즌 골든글러브 라인업에 밤 11시 59분 마감까지 남는다', tone: 'navy', season: true,
+      ico: ['.Y.Y.Y....', '.Y.Y.Y.Y..', '.YYYYYYY..', '.YYYYYYY..', 'YYYYYYYY..', 'YYWYYYYY..', '.YYYYYYY..', '..YYYYY...', '...YYY....', '..........'] },
+    { id: 'roymvp', name: '신인 MVP', desc: '신인왕을 받은 그해 MVP까지 받는다', tone: 'purple', chk: st => { const a = AWL(st); return a.some(x => { const m = /^(\d{4}) 신인왕$/.exec(x); return m && a.indexOf(`${m[1]} MVP`) >= 0; }); },
+      ico: ['....WW....', '...WWWW...', 'WWWWWWWWWW', '.WWWWWWWW.', '..WWGGWW..', '..WGGGGW..', '.WWWNNWWW.', '.WW.NN.WW.', '....NN....', '..........'] },
+    { id: 'titles10', name: '타이틀 수집가', desc: '개인 타이틀을 10개 이상 차지한다', tone: 'orange', chk: st => (st.car.aw.TITLE || 0) >= 10,
+      ico: ['..........', '.WWWWWWWW.', '.WYYWWYYW.', '.WWWWWWWW.', '.WYYWWYYW.', '.WWWWWWWW.', '.WYYWWYYW.', '.WWWWWWWW.', '..........', '..........'] },
+    { id: 'dynasty', name: '왕조 달성', desc: '소속팀이 리그 우승을 5번 차지한다', tone: 'purple', chk: st => (st.car.aw.KS || 0) >= 5,
+      ico: ['..........', 'Y...YY...Y', 'YY..YY..YY', 'YYY.YY.YYY', 'YYYYYYYYYY', 'YRYYWWYYRY', 'YYYYYYYYYY', '..........', 'W.W.W.W.W.', '..........'] },
+    { id: 'smvp', name: '시리즈의 사나이', desc: '우승 시리즈 MVP를 받는다', tone: 'red', chk: st => (st.car.aw.KSMVP || 0) >= 1,
+      ico: ['....YY....', '...YYYY...', 'YYYYYYYYYY', '.YYYYYYYY.', '..YYYYYY..', '..YYYYYY..', '.YYY..YYY.', '.YY....YY.', '..........', '..........'] },
+    { id: 'avg400', name: '4할 타자', desc: '1군 한 시즌 타율 4할 이상 (규정 타석)', tone: 'blue', chk: st => (st.hist || []).some(h => h.lvl === '1군' && h.bat && !h.bat.fut && (h.bat.PA || 0) >= 440 && h.bat.AB && h.bat.H / h.bat.AB >= 0.4),
+      ico: ['..........', 'W..W..WWW.', 'W..W..W.W.', 'WWWW..W.W.', '...W..W.W.', '...W..WWW.', '..........', '...WWWW...', '..W.RR.W..', '...WWWW...'] },
+    { id: 'hr50', name: '50홈런', desc: '1군 한 시즌 홈런 50개 이상', tone: 'red', chk: st => (st.hist || []).some(h => h.lvl === '1군' && h.bat && !h.bat.fut && (h.bat.HR || 0) >= 50),
+      ico: ['..........', 'WWW.WWW...', 'W...W.W...', 'WWW.W.W...', '..W.W.W...', 'WWW.WWW...', '.......WW.', '......WWWW', '......WWWW', '.......WW.'] },
+    { id: 'era1', name: '1점대 에이스', desc: '1군 한 시즌 평균자책점 1점대 (규정 이닝)', tone: 'navy', chk: st => (st.hist || []).some(h => h.lvl === '1군' && h.pit && !h.pit.fut && (h.pit.outs || 0) >= 432 && h.pit.ER * 27 / h.pit.outs < 2),
+      ico: ['..........', '...WW.....', '..WWW.....', '...WW.....', '...WW.....', '...WW.....', '..WWWW....', '......WWW.', '.....WRWRW', '......WWW.'] },
+    { id: 'three', name: '3개 리그 정복', desc: 'KBO·NPB·MLB 1군을 모두 뛴다', tone: 'green', chk: st => ['KBO', 'NPB', 'MLB'].every(l => (st.hist || []).some(h => h.lg === l && h.lvl === '1군')),
+      ico: ['..........', '...RRRR...', '..RRRRRR..', '..RRRRRR..', '...RRRR...', 'BBBB..WWWW', 'BBBBBWWWWW', 'BBBBBWWWWW', '.BBB..WWW.', '..........'] },
+    { id: 'age43', name: '불혹의 현역', desc: '43세 이상까지 현역으로 뛴다', tone: 'orange', chk: st => (st.final.retireAge || 0) >= 43,
+      ico: ['...WWWW...', '..W....W..', '.W..W...W.', '.W..W...W.', '.W..WWW.W.', '.W......W.', '..W....W..', '...WWWW...', '..........', '..........'] },
+    { id: 'late', name: '늦게 핀 꽃', desc: '드래프트 미지명이나 육성선수로 시작해 MVP를 받는다', tone: 'green', chk: st => (!st.me.draft || /육성/.test(String(st.me.draft.round))) && (st.car.aw.MVP || 0) >= 1,
+      ico: ['...R.R....', '..RRYRR...', '...RRR....', '....G.....', '....G.GG..', '..GGG.G...', '....G.....', '..NNNNNN..', '...NNNN...', '..........'] },
+    { id: 'retnum', name: '영구결번', desc: '명예의 전당 헌액 + 한 팀의 영구결번이 된다', tone: 'navy', chk: st => !!retiredNumber(st),
+      ico: ['.WWWWWWWW.', '.W......W.', '.W.WWWW.W.', '.W.W..W.W.', '.W.WWWW.W.', '.W....W.W.', '.W.WWWW.W.', '.W......W.', '.WWWWWWWW.', '..........'] },
+    // ---- 3차 추가분: 국가대표 · 누적 연봉 (earnings = 수수료 뗀 통산 수령액, 단위 만원) ----
+    { id: 'intl8', name: '국가대표 단골', desc: '국제대회에 8번 이상 출전한다', tone: 'blue', chk: st => (st.car.intlRec || st.car.intl || []).length >= 8,
+      ico: ['WWWWWWWWWW', 'WWWWWWWWWW', 'WWWRRWWWWW', 'WWRRBBWWWW', 'WWWBBWWWWW', 'WWWWWWWWWW', 'WWWWWWWWWW', 'N.........', 'N.........', 'N.........'] },
+    ...[[100, 'green'], [300, 'blue'], [500, 'navy'], [1000, 'purple']].map(([e, tone]) => ({
+      id: 'earn' + e, name: `누적 연봉 ${e.toLocaleString()}억`, desc: `통산 연봉+계약금 ${e.toLocaleString()}억 원 돌파`, tone,
+      chk: st => ((st.final && st.final.earnings) || st.me.earnings || 0) >= e * 10000,
+      ico: e >= 1000 ? ['..YYYYYY..', '.YYYYYYYY.', 'YYYWWWWYYY', 'YYWYYYYYYY', 'YYYWWWYYYY', 'YYYYYYWYYY', 'YYWWWWYYYY', '.YYYWYYYY.', '..YYYYYY..', '..........']
+        : e >= 500 ? ['..........', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '..........', '..........']
+        : e >= 300 ? ['..........', '..........', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '..........', '..........', '..........']
+        : ['..........', '..........', '..........', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '..........', '..........', '..........', '..........'],
+    })),
+  ];
+  // 홈에서 보여 주는 순서 (커리어 정점 → 개인 수상 → 우승·국제대회 → 타자 → 투수 → 여정)
+  const BADGE_ORDER = ['top50', 'hof', 'retnum', 'unanimous', 'season50', 'war100', 'ggAll', 'ggSeason', 'mvp', 'mvp4', 'gg5', 'roy', 'roymvp', 'titles10',
+    'ring', 'dynasty', 'ws', 'smvp', 'wbc', 'og', 'hr500', 'hit3000', 'avg400', 'hr50', 'w200', 'k3000', 'sv400', 'era1',
+    'intl8', 'tw', 'mlb', 'three', 'oneclub', 'age43', 'underdog', 'late', 'earn100', 'earn300', 'earn500', 'earn1000'];
+  BADGES.sort((a, b) => BADGE_ORDER.indexOf(a.id) - BADGE_ORDER.indexOf(b.id));
+  // ---------- 65차: 영구결번 ----------
+  //   명예의 전당 헌액 + 한 팀(T)에서: 1군 8시즌 이상 · WAR 40 이상 · T 소속으로 골든글러브 2회 이상
+  //   + T와 같은 리그 안에서는 '22세가 되고 주전을 잡은 뒤'부터 T에서만 뛰어야 한다 (해외 리그로 나갔다 오는 건 괜찮지만 돌아올 때도 T)
+  //   주전 기록(h.starter)이 없는 예전 저장은 22세 기준만 본다
+  function retiredNumber(st) {
+    const f = st.final; if (!f || !f.hof || !f.hof.in) return null;
+    const PRO = ['KBO', 'NPB', 'MLB'];
+    const H = (st.hist || []).filter(h => h.teamId && PRO.indexOf(h.lg) >= 0);
+    const ones = H.filter(h => h.lvl === '1군');
+    const teamOf = {}; H.forEach(h => { teamOf[h.year] = h.teamId; });
+    const hasStarter = H.some(h => h.starter != null);
+    const y22 = (H.find(h => h.age >= 22) || {}).year, yS = hasStarter ? (H.find(h => h.starter) || {}).year : null;
+    const cut = Math.max(y22 || 9999, yS == null ? -1 : yS);   // 둘 다 지난 해부터 제한
+    const by = {}; ones.forEach(h => { const b = by[h.teamId] = by[h.teamId] || { n: 0, war: 0, name: h.team, lg: h.lg }; b.n++; b.war += +h.war || 0; b.name = h.team; });
+    const ggYears = AWL(st).map(a => /^(\d{4}) (투수 )?골든글러브$/.exec(a)).filter(Boolean).map(m => +m[1]);
+    const cand = Object.keys(by).sort((a, b) => by[b].n - by[a].n || by[b].war - by[a].war);
+    for (const T of cand) {
+      const b = by[T];
+      if (b.n < 8 || b.war < 40) continue;
+      if (ggYears.filter(y => teamOf[y] === T).length < 2) continue;
+      if (H.some(h => h.lg === b.lg && h.year >= cut && h.teamId !== T)) continue;   // 같은 리그 이적 불가
+      return { teamId: T, team: b.name, num: st.me.num, lg: b.lg };
+    }
+    return null;
+  }
+  function ensureRetNum(st) { const f = st && st.final; if (!f) return null; if (f.retNum === undefined) { try { f.retNum = retiredNumber(st); } catch (e) { f.retNum = null; } } return f.retNum; }
+  // 시즌 뱃지 판정 대기 —은퇴 때 들면 적어 두고, 시즌(한국 시간 하루)이 끝난 뒤 접속하면 서버에서 최종 순위를 읽어 판정
+  const KEY_BADGE_WAIT = 'dugout_badges_wait';
+  function waitBadge(id, info) { const w = store.get(KEY_BADGE_WAIT, []); if (!Array.isArray(w) || w.some(x => x.id === id && x.end === info.end)) return; w.push(Object.assign({ id }, info)); store.set(KEY_BADGE_WAIT, w); }
+  function judgeSeasonBadges() {
+    const w = store.get(KEY_BADGE_WAIT, []); if (!Array.isArray(w) || !w.length || !LB_ON) return;
+    //   시즌 중에 들어와도 한 번씩 확인해서 이미 밀려났으면 대기에서 뺀다
+    //   (시즌이 끝난 뒤에는 서버가 그날 기록 일부를 지우므로, 시즌 중 확인이 더 정확하다)
+    const now = Date.now(), due = w.filter(x => !myBadges()[x.id]);
+    if (!due.length) { store.set(KEY_BADGE_WAIT, []); return; }
+    const range = x => `created_at=gte.${new Date(x.start).toISOString()}&created_at=lt.${new Date(x.end).toISOString()}`;
+    Promise.all(due.map(x => {
+      const q = x.id === 'season50' ? `top50?select=id&${range(x)}&score=gt.${x.score}&limit=50`
+        : `top50?select=id&${range(x)}&or=(lpos.eq.${x.lp},and(lpos.is.null,pos.eq.${x.lp}))&score=gt.${x.score}&limit=5`;
+      return lbFetch(q).then(r => ({ x, ok: Array.isArray(r) && r.length < (x.id === 'season50' ? 50 : x.lp === 'OF' ? 3 : 1) }), () => ({ x, ok: null }));
+    })).then(rs => {
+      let left = store.get(KEY_BADGE_WAIT, []), got = false;
+      for (const { x, ok } of rs) {
+        if (ok == null) continue;
+        const done = now >= x.end;
+        if (ok && !done) continue;   // 아직 시즌 중이고 순위 안 → 계속 대기
+        left = left.filter(y => !(y.id === x.id && y.end === x.end));
+        if (ok && done && giveBadge(null, x.id, { at: x.end - 1, who: x.who })) got = true;
+      }
+      store.set(KEY_BADGE_WAIT, left);
+      if (got && App.view === 'home') render();
+    });
+  }
+  // 메달 색 [밝은, 기본, 진한, 테두리]
+  const BTONE = { gold: ['#ffe9a3', '#e0b341', '#b8862a', '#7a5a14'], blue: ['#9cc4ff', '#3d7be0', '#2a5bb0', '#173a75'], navy: ['#8ea4d6', '#2e4a8a', '#1f3566', '#101d3d'],
+    red: ['#ffa8a0', '#d9483b', '#a8322a', '#6e1b16'], green: ['#a8e6a3', '#3f9d4a', '#2c7436', '#174420'], purple: ['#d4b3ff', '#8a4fd6', '#6534a8', '#3c1a6e'], orange: ['#ffd29a', '#e88a2c', '#b8641c', '#7a3e0c'] };
+  const BPAL = { W: '#ffffff', K: '#2a2a33', Y: '#ffd84a', R: '#e2443a', B: '#3d7be0', G: '#4cb050', N: '#8a5a32', O: '#ff9a2e' };
+  // 16×16 도트 메달
+  function drawBadge(cv, b, on) {
+    const N = 16, c = cv.getContext('2d'); cv.width = N; cv.height = N; c.clearRect(0, 0, N, N);
+    const inC = (x, y) => (x - 7.5) ** 2 + (y - 7.5) ** 2 <= 7.6 ** 2;
+    const T = on ? BTONE[b.tone] || BTONE.gold : ['#d6d0c4', '#bdb5a6', '#a39b8b', '#8a8274'];
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      if (!inC(x, y)) continue;
+      const edge = !inC(x - 1, y) || !inC(x + 1, y) || !inC(x, y - 1) || !inC(x, y + 1);
+      const d = (x - 5) ** 2 + (y - 5) ** 2;
+      c.fillStyle = edge ? T[3] : d < 10 ? T[0] : (x + y > 19 ? T[2] : T[1]);
+      c.fillRect(x, y, 1, 1);
+    }
+    (b.ico || []).forEach((row, y) => { for (let x = 0; x < row.length; x++) { const ch = row[x]; if (ch === '.') continue; c.fillStyle = on ? BPAL[ch] || '#fff' : (ch === 'K' ? '#8a8274' : '#9a9284'); c.fillRect(x + 3, y + 3, 1, 1); } });
+  }
+  function checkBadges(st) { for (const b of BADGES) if (b.chk) { try { if (b.chk(st)) giveBadge(st, b.id); } catch (e) { } } }
+  function myBadges() { const b = store.get(KEY_BADGE, {}); return b && typeof b === 'object' ? b : {}; }
+  function giveBadge(st, id, extra) {
+    const b = myBadges(); if (b[id]) return false;
+    b[id] = Object.assign({ at: Date.now(), who: st && st.final ? st.final.name : '' }, extra || {});
+    store.set(KEY_BADGE, b);
+    if (st) st._newBadges = (st._newBadges || []).concat([id]);
+    return true;
+  }
+  function badgePanel() {
+    const mine = myBadges(), got = BADGES.filter(x => mine[x.id]).length;
+    const waitL = store.get(KEY_BADGE_WAIT, []), waiting = id => Array.isArray(waitL) && waitL.some(w => w.id === id);
+    const day = t => { const d = new Date(t); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`; };
+    return `<div class="panel badge-panel"><h3>내 뱃지 <span class="tiny muted">${got} / ${BADGES.length} · 옆으로 밀어서 보기</span></h3>
+      <div class="badge-grid">${BADGES.filter(x => mine[x.id]).sort((a, b) => mine[b.id].at - mine[a.id].at).concat(BADGES.filter(x => !mine[x.id])).map(x => {   /* 획득한 것(최근 순) → 미획득 순서 */ const m = mine[x.id]; return `<div class="badge ${m ? 'on' : 'off'} tone-${x.tone}">
+        <canvas class="badge-pix" data-badge="${x.id}" data-on="${m ? 1 : 0}" width="16" height="16"></canvas>
+        <b class="badge-name">${esc(x.name)}</b>
+        <span class="badge-desc tiny">${esc(x.desc)}</span>
+        ${m ? `<span class="badge-when tiny" title="${m.who ? esc(m.who) : ''}">${day(m.at)}${m.rank ? ` · ${m.rank}위` : m.who ? ` · ${esc(m.who)}` : ''}</span>` : waiting(x.id) ? '<span class="badge-when tiny">판정 대기 중</span>' : '<span class="badge-when tiny muted">미획득</span>'}
+      </div>`; }).join('')}</div></div>`;
   }
   const recKey = (r, i) => r.online ? 'o' + r.id : String(r.date || 'r' + i);
   function rankPanel(recs, o) {
@@ -445,6 +640,19 @@
   }
   function drawPodium() {
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
+    document.querySelectorAll('canvas.badge-pix').forEach(cv => { const b = BADGES.find(x => x.id === cv.dataset.badge); if (b) drawBadge(cv, b, cv.dataset.on === '1'); });   // 65차: 뱃지 도트
+    document.querySelectorAll('.badge-grid').forEach(dragScroll);
+    if (App.view === 'home' && Date.now() - (App._judgeAt || 0) > 60000) { App._judgeAt = Date.now(); judgeSeasonBadges(); }
+  }
+  // 65차: 가로 줄을 마우스로 끌어서 밀기 + 세로 휠을 가로로 (터치는 브라우저 기본 스와이프)
+  function dragScroll(el) {
+    if (el._drag) return; el._drag = true;
+    let down = false, x0 = 0, s0 = 0, moved = false;
+    el.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') return; down = true; moved = false; x0 = e.clientX; s0 = el.scrollLeft; });
+    window.addEventListener('pointermove', e => { if (!down) return; const dx = e.clientX - x0; if (Math.abs(dx) > 4) { moved = true; el.classList.add('dragging'); } el.scrollLeft = s0 - dx; });
+    window.addEventListener('pointerup', () => { if (!down) return; down = false; el.classList.remove('dragging');
+      if (moved) { const w = el.firstElementChild ? el.firstElementChild.offsetWidth + 8 : 1; el.scrollTo({ left: Math.round(el.scrollLeft / w) * w, behavior: 'smooth' }); } });
+    el.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && el.scrollWidth > el.clientWidth) { const max = el.scrollWidth - el.clientWidth; if ((e.deltaY > 0 && el.scrollLeft < max) || (e.deltaY < 0 && el.scrollLeft > 0)) { e.preventDefault(); el.scrollLeft += e.deltaY; } } }, { passive: false });
   }
   function openCard(name, card) {
     if (!card || !Array.isArray(card.stats) || !Array.isArray(card.rows)) return;
@@ -483,6 +691,7 @@
       </div>
       ${App.dev ? '<div class="panel admin-panel small">관리자 모드: 진행 화면에서 내 선수의 잠재능력(PA)·등급·성장/노화 유형·전성기 시기를, 리그 탭 구단 기록에서 선수 OVR을 볼 수 있다.</div>' : ''}
       ${statsPanel()}
+      ${badgePanel()}
       ${homeBoard(recs)}
       <p class="tiny muted" style="text-align:center;margin-top:18px">리그 선수는 2025 시즌 실제 명단 기준(능력치는 가상) · 진행 중인 게임은 이 브라우저에 저장된다</p>
       <p class="tiny muted legal" style="text-align:center;margin-top:8px;line-height:1.5">이 게임은 KBO·NPB·MLB 및 각 구단·선수와 공식 관계가 없는 비영리 팬 게임입니다.<br>게임에 나오는 실제 리그·구단 명칭과 선수 이름에 대한 상표권·초상권·퍼블리시티권 등 모든 권리는 각 권리자에게 있습니다.<br>선수 능력치와 경기 결과는 모두 가상입니다. 권리자의 요청이 있으면 해당 내용을 바로 수정·삭제합니다.<br>© 2026 골글 들고 명전으로</p>`;
@@ -584,6 +793,7 @@
             <canvas id="card-ava"></canvas>
             ${hof ? `<div class="hof-ribbon">★ 명예의 전당 헌액자 · ${hof.year} ★</div>` : ''}
             <div class="card-grade">${grade}</div>
+            ${hof && st.final && ensureRetNum(st) ? `<div class="card-retnum">영구결번 #${st.final.retNum.num}</div>` : ''}
           </div>
           <div class="card-name"><span class="no num">${me.num}</span><h2>${esc(me.name)}</h2></div>
           <div class="card-sub">${esc(team)} · ${sub}${me.role === 'P' ? ` · 최고 ${v.velo}km/h` : ''}</div>
@@ -1358,13 +1568,27 @@
         <button class="btn go" data-act="hof-ok">헌액 카드 받기</button>
       </div></div>`;
   }
+  // 65차: 영구결번식 — 헌액식 바로 다음. 구단 색 유니폼 뒷면 + 등번호
+  function showRetNum() {
+    const st = App.st, f = st.final, me = st.me, rn = ensureRetNum(st); if (!rn) return;
+    const col = TEAMCOLOR(rn.teamId) || '#1f2d55';
+    $modal.innerHTML = `<div class="hof-overlay ret-overlay" data-act="ret-ok">
+      <div class="hof-box">
+        <div class="hof-kicker">RETIRED NUMBER</div>
+        <div class="ret-jersey" style="--team:${col}"><span class="ret-jname">${esc(f.name)}</span><b class="ret-jnum">${rn.num}</b></div>
+        <div class="hof-big">영구결번</div>
+        <div class="hof-name">${esc(rn.team)} · 등번호 <span class="num">#${rn.num}</span></div>
+        <div class="hof-msg">이제 ${esc(rn.team)}에서 ${rn.num}번은 누구도 달 수 없다.<br>${esc(f.name)}의 등번호가 홈구장에 영원히 걸렸다.</div>
+        <button class="btn go" data-act="ret-ok">계속</button>
+      </div></div>`;
+  }
   // 52차: 은퇴 결산의 순위 한 줄 — 순위에 들었을 때만 보여 준다 (못 들면 아무 문구 없음)
   function rankLine(st) {
     const span = t => `<span class="small" style="margin-top:6px">${t}</span>`;
     const txt = (a, s) => a ? `🏅 역대 최고점수 <b>${a}위</b>${s ? ` · 이번 시즌 <b>${s}위</b>` : ''}` : s ? `🏅 이번 시즌 최고점수 <b>${s}위</b>` : '';
     if (LB_ON && st._lb) {
       if (st._lb === 'checking') return span('순위 확인 중…');
-      if (st._lb === 'in') { const t = txt(st._lbRank, st._lbSRank); return t ? span(t + ' — 야구카드가 순위표에 남았다') : ''; }
+      if (st._lb === 'in') { const t = txt(st._lbRank, st._lbSRank); return t ? span(t + ' — 야구카드가 순위표에 남았다') + (st._newBadges && st._newBadges.length ? span(`🎖️ 새 뱃지: <b>${st._newBadges.map(id => esc((BADGES.find(b => b.id === id) || {}).name || id)).join(', ')}</b> — 홈 화면 맨 아래에서 볼 수 있다`) : '') : ''; }
       if (st._lb === 'error') return span('온라인 순위에 연결하지 못했다 — 이 기기 기록에만 남았다');
       return '';
     }
@@ -1421,6 +1645,7 @@
     // 40차: 점수만 비교해 순위표에 들면 야구카드만 남기고, 못 들면 아무것도 남기지 않는다
     // 52차: 역대 TOP 20 + 이번 시즌(오늘) TOP 50 — 둘 중 하나라도 들면 남긴다
     const byScore = (a, b) => b.score - a.score;
+    ensureRetNum(st);   // 65차: 영구결번 (카드·뱃지보다 먼저)
     const mine = { name: f.name, pos: f.mainPos && f.mainPos !== 'TW' ? f.mainPos : f.pos, twoWay: f.twoWay, score: f.score, war: f.war, hof: !!(f.hof && f.hof.in), date: Date.now(), card: cardData(st) };
     const all = recs.concat([mine]).sort(byScore);
     const keepAll = all.slice(0, ALL_MAX), keepSeason = all.filter(inSeason).slice(0, SEASON_MAX);
@@ -1428,6 +1653,7 @@
     st._rank = keepAll.indexOf(mine) + 1;      // 역대 순위 (0이면 TOP 20 밖)
     st._srank = keepSeason.indexOf(mine) + 1;  // 이번 시즌 순위 (0이면 TOP 50 밖)
     milestones(st);
+    checkBadges(st);   // 65차: 뱃지 (이 기기에만 저장)
     bump('retire');
     if (mine.hof) bump('hof');
     { const p0 = [st.me.flags && st.me.flags.pos0, f.mainPos, st.me.pos].find(p => STAT_POS.indexOf(p) >= 0); if (p0 && statOK()) lbFetch('rpc/add_score', { method: 'POST', body: JSON.stringify({ p: p0, s: f.score }) }).catch(() => { }); }
@@ -1524,6 +1750,7 @@
       twMain: tw ? (me.role === 'P' ? '투구' : '타격') : undefined, year: st.year - 1, isP, rows, total, cv: 2,
       aw: sortAw(mergeAw((f.awList || []).filter(awKeep))), teams: (f.teams || []).join(' → ').slice(0, 44),   // 64차: 업적 12개 자르기 없앰 — 전부, 개인 수상부터
       troph: trophyList(f.awList || []),   // 64차: 우승 트로피 [종류, 횟수]
+      ...(ensureRetNum(st) ? { retNum: { team: f.retNum.team, num: f.retNum.num } } : {}),   // 65차: 영구결번
       ...(pt ? { rowsP: pt.rows, totalP: pt.total } : {}),
     };
   }
@@ -1675,6 +1902,11 @@
       const gr = c.createLinearGradient(X + 14, 0, X + CW - 14, 0); gr.addColorStop(0, 'rgba(245,215,110,0)'); gr.addColorStop(0.15, '#f5d76e'); gr.addColorStop(0.5, '#ffe9a6'); gr.addColorStop(0.85, '#f5d76e'); gr.addColorStop(1, 'rgba(245,215,110,0)');
       c.fillStyle = gr; c.fillRect(X + 14, G + 136, CW - 28, 40); c.fillStyle = '#3b2a05'; c.font = '900 22px sans-serif'; c.textAlign = 'center'; c.fillText('★ 명예의 전당 헌액자 · ' + d.hof + ' ★', X + CW / 2, G + 164); c.textAlign = 'left';
       c.fillStyle = '#d4a52f'; roundRect(c, X + 44, G + 286, 190, 34, 8); c.fill(); c.fillStyle = '#3b2a05'; c.font = '900 18px sans-serif'; c.fillText('HALL OF FAME', X + 58, G + 310);
+      if (d.retNum) {   // 65차: 영구결번 — 오른쪽 아래 남색 패
+        const t = `영구결번 #${d.retNum.num}`; c.font = '900 18px sans-serif'; const tw = c.measureText(t).width + 28;
+        c.fillStyle = '#1f2d55'; roundRect(c, X + CW - 44 - tw, G + 286, tw, 34, 8); c.fill(); c.strokeStyle = '#f5d76e'; c.lineWidth = 2; c.stroke();
+        c.fillStyle = '#f5d76e'; c.textAlign = 'right'; c.fillText(t, X + CW - 58, G + 310); c.textAlign = 'left';
+      }
     } else { c.fillStyle = gradC; roundRect(c, X + 44, G + 286, 130, 34, 8); c.fill(); c.fillStyle = '#fff'; c.font = '900 18px sans-serif'; c.fillText({ bronze: 'BRONZE', silver: 'SILVER', gold: 'GOLD', legend: 'LEGEND' }[d.grade] || '', X + 58, G + 310); }
     c.fillStyle = '#c4352b'; c.font = '900 46px sans-serif'; c.fillText(String(d.num), X + 44, G + 392);
     c.fillStyle = '#1b2233'; c.font = '900 44px sans-serif'; c.fillText(d.name, X + 44 + c.measureText(String(d.num)).width + 60, G + 392);
@@ -1952,7 +2184,10 @@
       case 'notice-all': App.noticePop = false; markSeen('notice'); App.view = 'notice'; render(); window.scrollTo(0, 0); break;
       case 'reccard-save': if (App._recCard) cardImage(App._recCard); break;
       case 'reccard-close': if (el.classList.contains('card-overlay') && e.target.closest('.card-box')) break; $modal.innerHTML = ''; break;
-      case 'hof-ok': if (e.target.closest('.hof-box') && !e.target.closest('[data-act="hof-ok"].btn')) break; App.st._hofSeen = true; save(); $modal.innerHTML = ''; window.scrollTo(0, 0); break;
+      case 'hof-ok': if (e.target.closest('.hof-box') && !e.target.closest('[data-act="hof-ok"].btn')) break; App.st._hofSeen = true; save(); $modal.innerHTML = ''; window.scrollTo(0, 0);
+        if (ensureRetNum(App.st) && !App.st._retSeen) showRetNum();   // 65차: 헌액식 다음 영구결번식
+        break;
+      case 'ret-ok': if (e.target.closest('.hof-box') && !e.target.closest('[data-act="ret-ok"].btn')) break; App.st._retSeen = true; save(); $modal.innerHTML = ''; window.scrollTo(0, 0); break;
       case 'hof-replay': showHof(); break;
       case 'trophy-ok': if (e.target.closest('.tro-box') && !e.target.closest('[data-act="trophy-ok"].btn')) break; $modal.innerHTML = ''; App.troView = null; break;
       case 'intl-skip': App.intlShown = App.intlRes.games.length; render(); break;
@@ -2049,7 +2284,7 @@
 
   // 디버그·테스트용 핸들
   window.__app = App;
-  window.__card = { drawCard, cardData, histTables, render: () => render() };   // 64차: 카드 확인용
+  window.__card = { drawCard, cardData, histTables, retiredNumber, render: () => render() };   // 64차: 카드 확인용
   // 51차: 게임에 처음 들어올 때 아직 안 본 공지가 있으면 팝업으로 알린다
   if (CT.notices.length && isNew('notice')) App.noticePop = true;
   render();
