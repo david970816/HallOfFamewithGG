@@ -12,6 +12,8 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
     del(k) { try { localStorage.removeItem(k); } catch (e) { } },
   };
+  // 66차(시안): 야구장 테마 — 지금은 로컬 미리보기에서만 켠다 (확정되면 조건을 없앤다)
+  const PARK = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || store.get('dugout_theme', '') === 'park';
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   const KEY_ADMIN = 'dugout_admin2';
@@ -694,7 +696,7 @@
     return `
       <div class="row home-top">${devToggle()}<span class="spacer"></span>${homeIcons()}</div>
       <div class="home-hero">
-        <canvas id="hero-pix" class="hero-pix" width="64" height="26" aria-label="투수가 던지고 타자가 받아치는 픽셀 그림"></canvas>
+        <canvas id="hero-pix" class="hero-pix hero-wide" width="64" height="26" aria-label="투수가 던지고 타자가 받아치는 픽셀 그림"></canvas>
         <h1><span class="nw">골든글러브:</span> <span class="nw">명예의 전당으로</span></h1>
         <p class="hero-sub">골글 들고 명전까지,<br>고교 야구부 벤치 끝자리에서 시작하는<br>야구선수 한 명의 인생</p>
       </div>
@@ -1293,9 +1295,25 @@
       <div class="ld-year num">${L.year}</div>
       <div class="ld-sub">${L.stage === 'post' ? '포스팅 진행 중' : L.stage === 'pro' ? '정규시즌 진행 중' : '시즌 진행 중'}</div>
       <div class="ld-ball" aria-hidden="true"></div>
-      <div class="ld-bar"><span style="width:${Math.round(L.p * 100)}%"></span></div>
+      ${PARK ? diamondHTML(L.p) : `<div class="ld-bar"><span style="width:${Math.round(L.p * 100)}%"></span></div>`}
       <div class="ld-msg">${esc(msgs[i])}…</div>
     </div>`;
+  }
+  // 66차(시안): 시즌 진행을 다이아몬드로 — 홈 → 1루 → 2루 → 3루 → 홈을 주자가 돈다
+  const DIA = [[60, 104], [104, 60], [60, 16], [16, 60], [60, 104]];   // 홈·1루·2루·3루·홈 (120×120)
+  function diaPos(p) { const t = Math.max(0, Math.min(1, p)) * 4, i = Math.min(3, Math.floor(t)), f = t - i, a = DIA[i], b = DIA[i + 1]; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+  function diamondHTML(p) {
+    const [x, y] = diaPos(p), reached = Math.floor(Math.min(1, p) * 4);
+    const base = (i, [bx, by]) => `<rect class="dia-base ${i <= reached && i > 0 ? 'on' : ''}" x="${bx - 6}" y="${by - 6}" width="12" height="12" transform="rotate(45 ${bx} ${by})"/>`;
+    return `<svg class="ld-dia" viewBox="0 0 120 120" aria-hidden="true">
+      <polygon class="dia-dirt" points="60,4 116,60 60,116 4,60"/>
+      <polygon class="dia-grass" points="60,30 90,60 60,90 30,60"/>
+      <polyline class="dia-line" points="60,104 104,60 60,16 16,60 60,104"/>
+      ${base(1, DIA[1])}${base(2, DIA[2])}${base(3, DIA[3])}
+      <polygon class="dia-home" points="54,100 66,100 66,106 60,111 54,106"/>
+      <circle class="dia-mound" cx="60" cy="60" r="5"/>
+      <circle class="dia-runner" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5"/>
+    </svg>`;
   }
   // opts.pauseAt(0~1)에서 opts.onPause(resume)를 부르고 멈춘다 → resume()을 부르면 이어서 진행 (17차: 시즌 중 국가대표)
   function startLoading(onDone, stageOver, opts) {
@@ -1310,6 +1328,8 @@
       App.loading.p = Math.min(1, base + (performance.now() - t0) / dur);
       const bar = document.querySelector('.ld-bar span'), msg = document.querySelector('.ld-msg');
       if (bar) bar.style.width = Math.round(App.loading.p * 100) + '%';
+      const run = document.querySelector('.dia-runner');
+      if (run) { const [x, y] = diaPos(App.loading.p), n = Math.floor(Math.min(1, App.loading.p) * 4); run.setAttribute('cx', x.toFixed(1)); run.setAttribute('cy', y.toFixed(1)); document.querySelectorAll('.dia-base').forEach((b, i) => b.classList.toggle('on', i + 1 <= n)); }
       if (msg) { const m = LOAD_MSG[App.loading.stage] || LOAD_MSG.pro; msg.textContent = m[Math.min(m.length - 1, Math.floor(App.loading.p * m.length))] + '…'; }
       if (opts.pauseAt != null && App.loading.p >= opts.pauseAt) {
         const pa = opts.pauseAt; opts.pauseAt = null; paused = true;
@@ -1452,6 +1472,7 @@
     if (!it) { $modal.innerHTML = ''; return; }
     const who = it.who || '';
     $modal.innerHTML = `<div class="overlay"><div class="sheet">
+      ${PARK ? `<div class="sheet-strip"><span>📋 ${esc(it.cat || '결정')}</span><span class="dots">● ● ●</span></div>` : ''}
       <div class="speaker"><div class="avatar-sq">${esc(who.slice(0, 1))}</div><div><b>${esc(who)}</b><span class="chip">${esc(it.cat || '')}</span></div><span class="spacer"></span><span class="tiny muted">${it.id === 'intlCall' ? `${st.year - 1}년 시즌 중 · ${st.me.age - 1}세` : it.id === 'draft' || it.id === 'usDirect' ? `${st.year - 1}년 ${it.id === 'draft' ? '9월' : '여름'} · ${st.me.age - 1}세` : `${st.year - 1}년 겨울 · ${st.me.age}세`}</span></div>
       <div class="bubble">${esc(it.text)}</div>
       ${App.reaction == null ? `<div class="choices">${it.ch.map((c, i) => `<button class="btn block" data-act="choose" data-v="${i}">${esc(c)}</button>`).join('')}</div>` : ''}
@@ -2050,6 +2071,7 @@
   // ================================================================
   function render() {
     let html;
+    if (PARK) document.documentElement.classList.toggle('park', App.view !== 'home');   // 66차(시안): 홈 화면은 원래 모습 그대로
     if (App.view === 'home') html = viewHome();
     else if (App.view === 'create') html = viewCreate();
     else if (App.view === 'main') html = viewMain();
