@@ -465,6 +465,21 @@
     }
     return null;
   }
+  // 65차: 뱃지 도입 전에 역대 TOP50에 든 선수 — 이 기기 기록실(은퇴 기록)과 서버 역대 TOP50을 이름·점수로 맞춰 보고 한 번만 소급
+  const KEY_BACKFILL = 'dugout_badge_backfill1';
+  function backfillTop50() {
+    if (!LB_ON || store.get(KEY_BACKFILL, false)) return;
+    if (myBadges().top50) { store.set(KEY_BACKFILL, true); return; }
+    const recs = (store.get(KEY_REC, []) || []).filter(r => r && r.name && r.score != null && !r.online);
+    if (!recs.length) { store.set(KEY_BACKFILL, true); return; }
+    lbFetch(`top50?select=id,name,score&order=score.desc,id.asc&limit=${ALL_MAX}`).then(rows => {
+      if (!Array.isArray(rows)) return;
+      let hit = null;
+      rows.forEach((x, i) => { if (!hit) { const r = recs.find(r => r.name === x.name && Math.round(r.score) === Math.round(+x.score)); if (r) hit = { r, rank: i + 1 }; } });
+      if (hit && giveBadge(null, 'top50', { at: hit.r.date || Date.now(), who: hit.r.name, rank: hit.rank }) && App.view === 'home') render();
+      store.set(KEY_BACKFILL, true);
+    }).catch(() => { });   // 실패하면 다음 접속 때 다시
+  }
   function ensureRetNum(st) { const f = st && st.final; if (!f) return null; if (f.retNum === undefined) { try { f.retNum = retiredNumber(st); } catch (e) { f.retNum = null; } } return f.retNum; }
   // 시즌 뱃지 판정 대기 —은퇴 때 들면 적어 두고, 시즌(한국 시간 하루)이 끝난 뒤 접속하면 서버에서 최종 순위를 읽어 판정
   const KEY_BADGE_WAIT = 'dugout_badges_wait';
@@ -642,7 +657,7 @@
     document.querySelectorAll('canvas.pod-av').forEach(cv => drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color));
     document.querySelectorAll('canvas.badge-pix').forEach(cv => { const b = BADGES.find(x => x.id === cv.dataset.badge); if (b) drawBadge(cv, b, cv.dataset.on === '1'); });   // 65차: 뱃지 도트
     document.querySelectorAll('.badge-grid').forEach(dragScroll);
-    if (App.view === 'home' && Date.now() - (App._judgeAt || 0) > 60000) { App._judgeAt = Date.now(); judgeSeasonBadges(); }
+    if (App.view === 'home' && Date.now() - (App._judgeAt || 0) > 60000) { App._judgeAt = Date.now(); judgeSeasonBadges(); backfillTop50(); }
   }
   // 65차: 가로 줄을 마우스로 끌어서 밀기 + 세로 휠을 가로로 (터치는 브라우저 기본 스와이프)
   function dragScroll(el) {
