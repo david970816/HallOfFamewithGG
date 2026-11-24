@@ -90,7 +90,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // 23차: 명예의 전당 헌액 기준 (하나라도 달성). peakOVR은 화면 표시 눈금
     // 62차: 헌액 난이도 상향 — 아래 기준 중 need개 이상을 채워야 헌액. 기준 추가(골든글러브·개인 타이틀·시리즈 MVP·올해의 투수상·국제대회 우승·시즌 WAR·통산 OPS/ERA·도루·메이저리그 시즌)
     hof: { need: 4,   // 64차: 2 → 4
- war: 62, mvp: 2, titles: 4, titlesWar: 40, peakOVR: 86 /* 67차: 화면 눈금 변경으로 95 → 86 (같은 내부 능력) */, peakWar: 45, hits: 2500, hr: 420, wins: 190, saves: 350, ks: 2600, twoWay: 3,
+ war: 62, mvp: 2, titles: 4, titlesWar: 40, peakOVR: 91 /* 67차: 화면 눈금 변경으로 95 → 91 (내부 73.6 → 71.6, 아주 조금 쉬워짐) */, peakWar: 45, hits: 2500, hr: 420, wins: 190, saves: 350, ks: 2600, twoWay: 3,
       gg: 6, title: 6, smvp: 2, poy: 2, intlGold: 2, seasonWar: 9, ops: [5000, 0.900], era: [4500, 3.00], sb: 400, mlb: 8 },
     // 11차: 마무리 지정 선수의 마무리 자리 우선 보정, 보직 전환 제안 확률
     // 43차: 보직 제안 확대 — toSP 0.35→0.5, toCL 0.4→0.5. spN 선발↔불펜 제안 횟수(1~2→2~3), gap 간격(3→2년), spSta 체력(50→45), spGap 5선발 대비 여유(1→3)
@@ -1929,7 +1929,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   const SHOP = {
     // 66차 조정(시뮬 400명: 상점을 꾸준히 쓰면 점수 중앙값 +30~80%) → 레슨 +10%→+5%, 연수 +15~30%→+8~15%, 트레이너 노화 −25%→−12%
     lesson: { name: '개인 레슨', price: 500, grow: 0.05 },
-    abroad: { name: '해외 연수 프로그램', grow: [0.08, 0.15], price: o => o < 70 ? 1000 : o < 80 ? 2500 : o < 84 ? 5000 : 10000 },   // 67차: 화면 눈금 변경으로 90 → 84 (같은 내부 능력)
+    abroad: { name: '해외 연수 프로그램', grow: [0.08, 0.15], price: o => o < 70 ? 1000 : o < 80 ? 2500 : o < 90 ? 5000 : 10000 },   // 67차: 화면 눈금이 90부터 완만해져도 90 경계는 예전과 같다
     trainer: { name: '전담 트레이너', price: 80000, aging: 0.12, inj: 0.15 },
     gear: { price: 500, max: 2, plus: 2 / 1.25 },   // 화면 능력치 +2 (내부 눈금 1.6)
     GEAR: { con: '맞춤 배트', pow: '파워 배트', eye: '스포츠 고글', spd: '경량 스파이크', def: '프로 글러브', arm: '송구 밴드',
@@ -3286,8 +3286,9 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   }
   function cardGrade(me) { const a = avgKeys(me.shown, mainKeys(me)); return a >= 80 ? 'legend' : a >= 65 ? 'gold' : a >= 50 ? 'silver' : 'bronze'; }
   // 10차: 화면 표시용 능력치 눈금 (내부값 30→40, 64→83, 72→93). 내부 계산·밸런스는 그대로
-  // 67차: 화면 80(내부 62)부터는 완만하게 — 내부 62~99를 화면 80~99에 나눠 담는다 (예전엔 내부 78 이상이 모두 99로 뭉개졌다)
-  const DISP_KNEE = 62, DISP_KNEE_V = 80;
+  // 67차: 화면 90(내부 70)부터는 완만하게 — 내부 70~99를 화면 90~99에 나눠 담는다 (예전엔 내부 78 이상이 모두 99로 뭉개졌다)
+  //   빌드 55에서 80(내부 62)부터 눌렀더니 OVR(능력치 평균)이 87 위로 못 올라가서 빌드 56에서 90으로 옮김. 90 아래는 예전과 같다
+  const DISP_KNEE = 70, DISP_KNEE_V = 90;
   function dispRaw(v) { return v <= DISP_KNEE ? 40 + (v - 30) * 1.25 : DISP_KNEE_V + (v - DISP_KNEE) * (99 - DISP_KNEE_V) / (99 - DISP_KNEE); }
   function disp(v) { return Math.max(1, Math.min(99, Math.round(dispRaw(v)))); }
   // 변화량 표시: 지금 값(cur, 내부)을 알면 화면 숫자 차이 그대로, 모르면 예전 방식(×1.25)
