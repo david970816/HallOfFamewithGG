@@ -331,6 +331,10 @@ table.linescore .cur { background: rgba(196,53,43,.12); color: var(--ink); font-
 .badge-desc { color: var(--ink2); line-height: 1.25; font-size: 10px; word-break: keep-all; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .badge-when { color: var(--gold); font-weight: 700; font-size: 10px; margin-top: auto; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* 66차: 은퇴 결산 영구결번 칸 */
+.retnum-panel { border-top: 4px solid #1f2d55; }
+.retnum-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.retnum-no { flex: none; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 12px; background: #1f2d55; color: #f5d76e; font-size: 20px; font-weight: 900; box-shadow: inset 0 0 0 2px #f5d76e; }
 /* 65차: 영구결번 — 카드 앞면 표시 + 영구결번식 */
 .card-retnum { position: absolute; bottom: 8px; left: 10px; z-index: 2; font-size: 10px; font-weight: 900; color: #f5d76e; background: #1f2d55; border: 1px solid #f5d76e; padding: 2px 7px; border-radius: 6px; }
 .ret-overlay { background: radial-gradient(circle at 50% 40%, rgba(20,30,70,.98), rgba(8,10,20,.99) 70%); }

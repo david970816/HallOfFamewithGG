@@ -1576,6 +1576,7 @@
       ${f.oneLine ? `<div class="panel reveal one-line"><span class="tiny muted">커리어 한줄평</span><b>“${esc(f.oneLine)}”</b></div>` : ''}
       ${f.hof && f.hof.in ? `<div class="panel reveal hof-panel"><div class="hof-title">명예의 전당 헌액</div><div class="small">${esc(f.name)}의 이름이 명예의 전당에 새겨졌다.</div><div class="stamps" style="justify-content:center">${f.hof.why.map(w => `<span class="stamp gold">${esc(w)}</span>`).join('')}</div><button class="btn small" data-act="hof-replay" style="margin-top:10px">헌액식 다시 보기</button></div>`
         : `<div class="panel reveal small muted" style="text-align:center">명예의 전당 헌액 기준에는 닿지 못했다.${f.hof && f.hof.why && f.hof.why.length ? `<div style="margin-top:6px">달성한 기준 ${f.hof.why.length}개 · 헌액에는 ${f.hof.need || 2}개 이상 필요</div><div class="stamps" style="justify-content:center">${f.hof.why.map(w => `<span class="stamp">${esc(w)}</span>`).join('')}</div>` : ''}</div>`}
+      ${retNumPanel(st)}
       <div class="panel reveal" id="share-src">
         <div class="big-score"><span>CAREER SCORE</span><b class="num">${f.score}</b>
           ${pct != null ? `<span class="pct-badge">전체 커리어 대비 상위 ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</span>` : `<span class="tiny muted" id="pct-wait">비교 데이터 만드는 중…</span>`}
@@ -1668,6 +1669,27 @@
         <div class="hof-why">${f.hof.why.map(w => `<span>${esc(w)}</span>`).join('')}</div>
         <button class="btn go" data-act="hof-ok">헌액 카드 받기</button>
       </div></div>`;
+  }
+  // 66차: 은퇴 결산 — 영구결번이면 명예의 전당 칸 아래에 그 구단에서의 활약 (아니면 아무것도 안 그림)
+  function retNumPanel(st) {
+    const rn = ensureRetNum(st); if (!rn) return '';
+    const H = (st.hist || []).filter(h => h.teamId === rn.teamId && h.lvl === '1군');
+    if (!H.length) return '';
+    const add = (a, b) => { if (!b) return a; for (const k in b) if (typeof b[k] === 'number') a[k] = (a[k] || 0) + b[k]; return a; };
+    const bat = H.reduce((a, h) => add(a, h.bat && !h.bat.fut ? h.bat : null), {}), pit = H.reduce((a, h) => add(a, h.pit && !h.pit.fut ? h.pit : null), {});
+    const war = H.reduce((a, h) => a + (+h.war || 0), 0), years = H.map(h => h.year), y0 = Math.min(...years), y1 = Math.max(...years);
+    const inT = y => H.some(h => h.year === y);
+    const awYears = re => AWL(st).map(a => re.exec(a)).filter(Boolean).map(m => +m[1]).filter(inT).length;
+    const gg = awYears(/^(\d{4}) (투수 )?골든글러브$/), mvp = awYears(/^(\d{4}) MVP$/), ks = (st.car.titles || []).filter(t => inT(t.year)).length;
+    const box = (v, k) => `<div><b>${v}</b><span>${k}</span></div>`;
+    const showB = bat.PA > 0 && (st.me.role === 'B' || st.me.twoWay || bat.PA > 300), showP = pit.outs > 0 && (st.me.role === 'P' || st.me.twoWay || pit.outs > 300);
+    return `<div class="panel reveal retnum-panel">
+      <div class="retnum-head"><span class="retnum-no num">#${rn.num}</span><div><div class="hof-title" style="margin:0">영구결번 · ${esc(rn.team)}</div><div class="tiny muted">${y0}~${y1} · 1군 ${H.length}시즌</div></div></div>
+      <div class="season-sum">${box(f1(war), 'WAR')}${box(gg, '골든글러브')}${box(mvp, 'MVP')}${box(ks, '우승')}</div>
+      ${showB ? `<div class="season-sum">${box(r3(Sim.AVG(bat)), '타율')}${box(bat.H || 0, '안타')}${box(bat.HR || 0, '홈런')}${box(r3(Sim.OPS(bat)), 'OPS')}</div>` : ''}
+      ${showP ? `<div class="season-sum">${box(`${pit.W || 0}-${pit.L || 0}`, '승-패')}${box(f2(Sim.ERA(pit)), 'ERA')}${box(pit.K || 0, '탈삼진')}${box(pit.SV || 0, '세이브')}</div>` : ''}
+      <div class="small" style="text-align:center">${esc(rn.team)}의 ${rn.num}번은 이제 누구도 달 수 없다.</div>
+    </div>`;
   }
   // 65차: 영구결번식 — 헌액식 바로 다음. 구단 색 유니폼 뒷면 + 등번호
   function showRetNum() {
@@ -2394,7 +2416,7 @@
 
   // 디버그·테스트용 핸들
   window.__app = App;
-  window.__card = { drawCard, cardData, histTables, retiredNumber, render: () => render() };   // 64차: 카드 확인용
+  window.__card = { drawCard, cardData, histTables, retiredNumber, retNumPanel, render: () => render() };   // 64차: 카드 확인용
   // 51차: 게임에 처음 들어올 때 아직 안 본 공지가 있으면 팝업으로 알린다
   if (CT.notices.length && isNew('notice')) App.noticePop = true;
   render();
