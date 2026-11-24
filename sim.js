@@ -788,7 +788,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // 66차: 상점 — 전담 트레이너 자동 연장(돈이 모자라면 계약 종료) · 이번 시즌 장비(능력치 +2)
     if (me.stage === 'pro') {
       const sh = shopNow(st);
-      if (me.trainerAuto && !sh.trainer) { if (cashOf(me) >= SHOP.trainer.price) { me.spent = (me.spent || 0) + SHOP.trainer.price; sh.trainer = true; } else me.trainerAuto = false; }
+      if (me.trainerAuto) me.trainerAuto = false;   // 68차: 상점을 없애서 전담 트레이너 자동 연장도 끝 (이미 산 효과는 그 시즌까지)
       for (const k of sh.gear) me.tmp[k] = (me.tmp[k] || 0) + SHOP.gear.plus;
     }
   }

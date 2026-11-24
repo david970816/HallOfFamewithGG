@@ -82,7 +82,14 @@ input.t, select.t { width: 100%; padding: 10px 12px; border-radius: 10px; border
   -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent); mask-image: linear-gradient(to bottom, #000 72%, transparent); }
 .home-hero:has(.hero-wide) { padding-top: 24px; }   /* 시안 A-1: 아이콘 줄과 조금 띄움 */
 .money-line { margin-top: 8px; text-align: center; color: var(--ink2); line-height: 1.6; word-break: keep-all; }
-/* 66차: 상점 */
+/* 68차: 포스팅 자격 안내 */
+.post-alert { margin: 10px 0 12px; border: 2px solid var(--gold); animation: peakGlow 1.6s ease 2; }
+.post-alert .row { align-items: flex-start; gap: 10px; }
+.post-alert .pa-ico { font-size: 26px; line-height: 1; }
+.post-alert .pa-t { flex: 1; min-width: 0; }
+.post-alert .pa-t > b { font-size: 16px; color: var(--gold); }
+.post-alert .pa-t .tiny { margin-top: 3px; line-height: 1.5; }
+/* 66차: 상점 (68차: 보유 자금 표시만 남음) */
 .shop-entry { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 12px; padding: 11px 14px; border: 0; border-radius: 14px; background: var(--paper); color: var(--ink); text-align: left; box-shadow: var(--shadow); }
 .shop-ico { font-size: 22px; }
 .shop-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -409,8 +416,7 @@ table.stat tr.tot td { font-weight: 800; border-top: 2px solid var(--ink); }
 .info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .info div { background: var(--paper); border-radius: 12px; padding: 9px 10px; box-shadow: var(--shadow); }
 .info .k { font-size: 11px; color: var(--mute); font-weight: 700; }
-.info .v { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dock { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--bg) 70%, transparent); }
+.info .v { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.dock { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--bg) 70%, transparent); }
 .dock .in { max-width: 460px; margin: 0 auto; }
 .btn.go { font-size: 18px; padding: 16px; border-radius: 16px; background: var(--red); color: #fff; box-shadow: 0 8px 20px rgba(196,53,43,.35); }
 .tabs { display: flex; gap: 6px; margin-top: 16px; }

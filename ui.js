@@ -905,8 +905,7 @@
     const st = App.st, me = st.me, v = Sim.view(st);
     let info;
     if (me.stage === 'pro') {
-      info = [['나이', `${me.age}세`], ['소속', `${Sim.teamName(st, me.team)} ${me.lvl === 1 ? '1군' : minorName(st)}`], ['연봉', Sim.man(me.salary)]];
-    } else if (me.stage === 'mil') {
+      info = [['나이', `${me.age}세`], ['소속', `${Sim.teamName(st, me.team)} ${me.lvl === 1 ? '1군' : minorName(st)}`], ['연봉', Sim.man(me.salary)]];    } else if (me.stage === 'mil') {
       info = [['나이', `${me.age}세`], ['복무', me.milType === 'sangmu' ? '상무' : '현역'], ['전역까지', `${Sim.BAL.mil.years - me.milYears}시즌`]];
     } else {
       const sc = me.scout.perf.length ? Sim.interest(me.scout.score) : '관심 없음';
@@ -919,61 +918,45 @@
       ${cardHTML(st)}
       <div class="flip-hint">카드를 누르면 뒷면(연도별 기록)이 보인다</div>
       <div class="info">${info.map(([k, x]) => `<div><div class="k">${k}</div><div class="v">${esc(x)}</div></div>`).join('')}</div>
-      ${shopEntry(st)}${focusPanel(st)}${contractPanel(st)}${pitchPanel(st)}      ${me.stage === 'hs' && me.grade >= 3 && me.scout.perf.length ? `<div class="panel small">예상 지명 범위: <b>${Sim.draftRange(me.scout.score)}</b></div>` : ''}
+      ${focusPanel(st)}${cashEntry(st)}${contractPanel(st)}${pitchPanel(st)}      ${me.stage === 'hs' && me.grade >= 3 && me.scout.perf.length ? `<div class="panel small">예상 지명 범위: <b>${Sim.draftRange(me.scout.score)}</b></div>` : ''}
       <div class="tabs">${[['career', '역대 시즌'], ['total', '역대 커리어'], ['comp', '대회별'], ['league', '리그'], ['story', Sim.canPost(st) ? '인생 ✈' : '인생']].map(([k, t]) => `<button class="${App.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}</button>`).join('')}</div>
       ${App.tab === 'career' ? tabCareer(st) : App.tab === 'comp' ? tabComp(st) : App.tab === 'total' ? tabTotal(st) : App.tab === 'league' ? tabLeague(st) : tabStory(st)}
       ${me.stage === 'pro' && me.age >= 35 ? `<div style="text-align:center;margin-top:16px"><button class="btn small" data-act="retire-now">은퇴 선언</button></div>` : ''}
       ${App.dev ? adminPanel(st) : ''}
       <div class="dock"><div class="in"><button class="btn go block" data-act="${pending ? 'next-event' : 'play'}">${goLabel}</button></div></div>`;
   }
-  // ---------- 66차: 상점 (프로 입단 후, 시즌 진행 전) ----------
-  function shopEntry(st) {
+  // ---------- 68차: 상점은 없앴고 보유 자금 칸만 남김 — 누르면 투자 ----------
+  function cashEntry(st) {
     if (st.me.stage !== 'pro' || st.done) return '';
     const S = Sim.shopState(st);
-    const tags = [S.train ? (S.train === 'lesson' ? '레슨' : '해외 연수') : '', S.gear.length ? `장비 ${S.gear.length}` : '', S.trainer ? '트레이너' : '', S.inv.length ? `투자 ${S.inv.length}` : ''].filter(Boolean);
-    return `<button class="shop-entry" data-act="shop-open"><span class="shop-ico">🏪</span><span class="shop-t"><b>상점</b><span class="tiny">${tags.length ? '이번 시즌: ' + tags.join(' · ') : '훈련 · 메디컬 · 장비 · 특별 · 투자'}</span></span><span class="shop-cash"><span class="tiny">보유 자금</span><b class="num">${Sim.man(S.cash)}</b></span></button>`;
+    return `<button class="shop-entry" data-act="inv-open"><span class="shop-ico">💰</span><span class="shop-t"><b>보유 자금 · 투자</b><span class="tiny">${S.inv.length ? `진행 중인 투자 ${S.inv.length}건` : '채권 · 주식 · 스타트업'}</span></span><span class="shop-cash"><span class="tiny">보유 자금</span><b class="num">${Sim.man(S.cash)}</b></span></button>`;
   }
-  function showShop(msg) {
-    const st = App.st, S = Sim.shopState(st), tab = App.shopTab || 'train', M = Sim.man;
-    const T = [['train', '훈련'], ['medical', '메디컬'], ['gear', '장비'], ['special', '특별'], ['invest', '투자']];
-    const item = (title, desc, price, act, v, state) => `<div class="shop-item ${state === 'on' ? 'on' : ''}"><div class="si-t"><b>${title}</b><span class="tiny muted">${desc}</span></div>
-      ${state === 'on' ? '<span class="si-on">적용 중</span>' : state === 'off' ? '<span class="si-off tiny muted">이번 시즌 선택 끝</span>' : `<button class="btn small ${S.cash < price ? '' : 'primary'}" data-act="shop-buy" data-v="${act}" ${v != null ? `data-arg="${v}"` : ''} ${S.cash < price ? 'disabled' : ''}>${M(price)}</button>`}</div>`;
-    let body = '';
-    if (tab === 'train') {
-      body = `<div class="tiny muted shop-note">시즌마다 하나만 고를 수 있다</div>
-        ${item('개인 레슨', '성장량 증가', S.prices.lesson, 'lesson', null, S.train === 'lesson' ? 'on' : S.train ? 'off' : '')}
-        ${item('해외 연수 프로그램', '성장량 증가', S.prices.abroad, 'abroad', null, S.train === 'abroad' ? 'on' : S.train ? 'off' : '')}`;
-    } else if (tab === 'medical') {
-      body = `<div class="tiny muted shop-note">시즌마다 자동으로 연장되고 언제든 끝낼 수 있다</div>
-        ${item('전담 트레이너 고용', '노화 방지 · 연 결제', S.prices.trainer, 'trainer', null, S.trainer ? 'on' : '')}
-        ${S.trainer ? `<div class="shop-sub tiny">${S.trainerAuto ? `다음 시즌에도 자동 연장 (${M(S.prices.trainer)}) · <button class="linkbtn" data-act="shop-buy" data-v="trainerOff">계약 끝내기</button>` : '이번 시즌이 끝나면 계약이 끝난다 · <button class="linkbtn" data-act="shop-buy" data-v="trainer">다시 연장</button>'}</div>` : ''}`;
-    } else if (tab === 'gear') {
-      body = `<div class="tiny muted shop-note">이번 시즌만 능력치 +2 · 시즌마다 ${S.gearMax}개까지 (${S.gear.length}/${S.gearMax})</div>
-        ${S.gearKeys.map(g => item(g.name, `${g.label} +2 (이번 시즌)`, S.prices.gear, 'gear', g.k, S.gear.indexOf(g.k) >= 0 ? 'on' : S.gear.length >= S.gearMax ? 'off' : '')).join('')}`;
-    } else if (tab === 'special') {
-      body = `<div class="tiny muted shop-note">커리어에 한 번 · 효과는 은퇴할 때까지 계속된다</div>
-        ${item('바이오닉 관절 수술', `부상 확률 감소 · ${st.me.twoWay ? '어깨·컨택·구속·구위' : st.me.role === 'P' ? '구속·구위' : '어깨·컨택'} 증가`, S.prices.bionic, 'bionic', null, S.bionic ? 'on' : '')}
-        ${item('동결건조 캡슐', '노화 속도 방지', S.prices.capsule, 'capsule', null, S.capsule ? 'on' : '')}`;
-    } else {
-      // 투자 금액 (상품마다 다름, 보유 자금 안에서만)
-      //   채권·주식: 1,000만 · 5,000만 · 1억 · 5억 · 연봉 절반 / 스타트업: 3억 · 5억 · 10억 · 연봉 절반 · 보유금 절반 (최소 3억)
-      const half = x => Math.floor(x / 2 / 100) * 100;
-      const AMT = { safe: [[1000], [5000], [10000], [50000], [half(S.salary), '연봉 절반']], normal: [[1000], [5000], [10000], [50000], [half(S.salary), '연봉 절반']],
-        risky: [[30000], [50000], [100000], [half(S.salary), '연봉 절반'], [half(S.cash), '보유금 절반']] };
-      const amtsOf = k => AMT[k].map(([a, t]) => [a, t, a >= (S.INV[k].min || S.invMin) && a <= S.cash]);   // 못 사는 금액은 숨기지 않고 회색으로
-      body = `<div class="tiny shop-note"><b>중복 선택 가능</b> <span class="muted">· 동시에 ${S.invMax}개까지 · 결과는 1~2년 뒤 시즌 결산에 나온다 · 은퇴하면 그 자리에서 정리</span></div>
-        ${Object.entries(S.INV).map(([k, I]) => `<div class="shop-item"><div class="si-t"><b>${I.name}</b><span class="tiny muted">${I.yrs}년 뒤 · 성공 ${Math.round(I.p * 100)}% → +${Math.round(I.win * 100)}% · 실패 → −${Math.round(I.lose * 100)}%</span></div></div>
-          <div class="inv-row">${S.inv.length >= S.invMax ? '<span class="tiny muted">진행 중인 투자가 가득 찼다</span>' : amtsOf(k).map(([a, t, ok]) => `<button class="btn small" data-act="shop-buy" data-v="invest" data-arg="${k}:${a}" ${ok ? '' : 'disabled'} ${t ? `title="${M(a)}"` : ''}>${t ? `${t} <span class="tiny muted">${M(a)}</span>` : M(a)}</button>`).join('')}${I.min ? `<span class="tiny muted inv-min">최소 ${M(I.min)}</span>` : ''}</div>`).join('')}
-        ${S.inv.length ? `<div class="shop-sub tiny"><b>진행 중</b><br>${S.inv.map(x => `${x.name} ${M(x.amt)} · ${x.due}시즌 뒤 결과`).join('<br>')}</div>` : ''}
-        <div class="shop-sub tiny muted">지금까지 투자 손익 ${S.invPL >= 0 ? '+' : '−'}${M(Math.abs(S.invPL))}</div>`;
-    }
-    $modal.innerHTML = `<div class="overlay" data-act="shop-close"><div class="sheet shop-sheet">
-      <div class="row"><b style="font-size:17px">🏪 상점</b><span class="spacer"></span><span class="small">보유 자금 <b class="num">${M(S.cash)}</b></span></div>
-      <div class="seg shop-tabs" style="margin-top:10px">${T.map(([k, t]) => `<button class="${tab === k ? 'on' : ''}" data-act="shop-tab" data-v="${k}">${t}</button>`).join('')}</div>
+  function showInvest(msg) {
+    const S = Sim.shopState(App.st), M = Sim.man;
+    // 투자 금액 (상품마다 다름, 보유 자금 안에서만)
+    //   채권·주식: 1,000만 · 5,000만 · 1억 · 5억 · 연봉 절반 / 스타트업: 3억 · 5억 · 10억 · 연봉 절반 · 보유금 절반 (최소 3억)
+    const half = x => Math.floor(x / 2 / 100) * 100;
+    const AMT = { safe: [[1000], [5000], [10000], [50000], [half(S.salary), '연봉 절반']], normal: [[1000], [5000], [10000], [50000], [half(S.salary), '연봉 절반']],
+      risky: [[30000], [50000], [100000], [half(S.salary), '연봉 절반'], [half(S.cash), '보유금 절반']] };
+    const amtsOf = k => AMT[k].map(([a, t]) => [a, t, a >= (S.INV[k].min || S.invMin) && a <= S.cash]);   // 못 사는 금액은 숨기지 않고 회색으로
+    $modal.innerHTML = `<div class="overlay" data-act="inv-close"><div class="sheet shop-sheet">
+      <div class="row"><b style="font-size:17px">💰 투자</b><span class="spacer"></span><span class="small">보유 자금 <b class="num">${M(S.cash)}</b></span></div>
       ${msg ? `<div class="shop-msg small">${esc(msg)}</div>` : ''}
-      <div class="shop-body">${body}</div>
-      <button class="btn block" data-act="shop-close" style="margin-top:12px">닫기</button>
+      <div class="tiny shop-note"><b>중복 선택 가능</b> <span class="muted">· 동시에 ${S.invMax}개까지 · 결과는 1~2년 뒤 시즌 결산에 나온다 · 은퇴하면 그 자리에서 정리</span></div>
+      ${Object.entries(S.INV).map(([k, I]) => `<div class="shop-item"><div class="si-t"><b>${I.name}</b><span class="tiny muted">${I.yrs}년 뒤 · 성공 ${Math.round(I.p * 100)}% → +${Math.round(I.win * 100)}% · 실패 → −${Math.round(I.lose * 100)}%</span></div></div>
+        <div class="inv-row">${S.inv.length >= S.invMax ? '<span class="tiny muted">진행 중인 투자가 가득 찼다</span>' : amtsOf(k).map(([a, t, ok]) => `<button class="btn small" data-act="inv-buy" data-arg="${k}:${a}" ${ok ? '' : 'disabled'} ${t ? `title="${M(a)}"` : ''}>${t ? `${t} <span class="tiny muted">${M(a)}</span>` : M(a)}</button>`).join('')}${I.min ? `<span class="tiny muted inv-min">최소 ${M(I.min)}</span>` : ''}</div>`).join('')}
+      ${S.inv.length ? `<div class="shop-sub tiny"><b>진행 중</b><br>${S.inv.map(x => `${x.name} ${M(x.amt)} · ${x.due} 시즌 결산에서 결과`).join('<br>')}</div>` : ''}
+      <div class="shop-sub tiny muted">지금까지 투자 손익 ${S.invPL >= 0 ? '+' : '−'}${M(Math.abs(S.invPL))}</div>
+      <button class="btn block" data-act="inv-close" style="margin-top:12px">닫기</button>
     </div></div>`;
+  }
+  // ---------- 68차: 포스팅 자격이 되면 비시즌마다 한 번 팝업으로 묻는다 ----------
+  function maybePostPop() {
+    const st = App.st;
+    if (!st || st.done || st.pending.length || $modal.innerHTML.trim() || !Sim.canPost(st) || st.me.flags.postAsk === st.year) return;
+    const first = !st.me.flags.postSeen;
+    $modal.innerHTML = `<div class="overlay"><div class="sheet post-alert"><div class="row"><span class="pa-ico">✈️</span><div class="pa-t"><b>${first ? '포스팅 자격을 얻었다!' : '포스팅 신청 가능'}</b><div class="tiny muted">해외(일본·미국) 구단 응찰을 받아볼 수 있다. 능력치·최근 성적이 모자라면 응찰이 없을 수도 있다. 비시즌에 한 번.<br>지금 넘겨도 <b>인생</b> 탭에서 언제든 신청할 수 있다.</div></div></div>
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn small" data-act="post-hide">이번엔 넘기기</button><button class="btn small primary" data-act="post" style="flex:1">포스팅 신청</button></div></div></div>`;
   }
   function devText(st) {
     const d = Sim.debug(st), me = st.me;
@@ -2185,6 +2168,7 @@
     if (App.view === 'home') { startHero(); drawPodium(); }
     if (App.view === 'lineup') drawPodium();
     if (App.view === 'main' || App.view === 'retire') afterCard();
+    if (App.view === 'main') maybePostPop();   // 68차
     // 59차: 우승 애니메이션이 떠 있는 동안 같은 화면이 다시 그려져도(국제대회 마지막 경기 0.8초 뒤 등) 지우지 않는다 — '계속'을 눌러야 닫힘
     const troOpen = App.troView && App.troView === App.view && $modal.querySelector('.tro-overlay');
     if (App.troView && App.troView !== App.view) App.troView = null;
@@ -2274,15 +2258,15 @@
       case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) { App.st.me.flags.pos0 = App.st.me.flags.closer ? 'CL' : App.st.me.pos; App.st.me.flags.t0 = Date.now(); App.st.me.flags.ms = {}; App.st.me.flags.r0 = abilOf(App.st.me.r); App.st.me.flags.role0 = App.st.me.role; save(); bump('pos_' + App.st.me.flags.pos0); } break;
       case 'flip': App.flipped = !App.flipped; el.classList.toggle('flipped', App.flipped); break;
       case 'tab': App.tab = v; render(); break;
-      // 66차: 상점
-      case 'shop-open': App.shopTab = App.shopTab || 'train'; showShop(); break;
-      case 'shop-close': if (e.target.closest('.sheet') && !e.target.closest('[data-act="shop-close"].btn')) break; $modal.innerHTML = ''; render(); break;
-      case 'shop-tab': App.shopTab = v; showShop(); break;
-      case 'shop-buy': {
-        let arg = el.dataset.arg;
-        if (v === 'invest' && arg) { const [kind, a] = arg.split(':'); const cash = Sim.shopState(App.st).cash; arg = { kind, amt: a === 'half' ? Math.floor(cash / 2 / 100) * 100 : +a }; }
-        const r = Sim.shopBuy(App.st, v, arg); if (r.ok) save(); showShop(r.msg); break;
+      // 68차: 투자 (상점에서 투자만 남김)
+      case 'inv-open': showInvest(); break;
+      case 'inv-close': if (e.target.closest('.sheet') && !e.target.closest('[data-act="inv-close"].btn')) break; $modal.innerHTML = ''; render(); break;
+      case 'inv-buy': {
+        const [kind, a] = (el.dataset.arg || '').split(':');
+        const r = Sim.shopBuy(App.st, 'invest', { kind, amt: +a }); if (r.ok) save(); showInvest(r.msg); break;
       }
+      // 68차: 포스팅 팝업 '이번엔 넘기기' — 이번 비시즌엔 다시 안 뜬다 (인생 탭에서는 계속 신청 가능)
+      case 'post-hide': App.st.me.flags.postAsk = App.st.year; App.st.me.flags.postSeen = true; save(); $modal.innerHTML = ''; break;
       case 'lgcat': App.lgCat = v; render(); break;
       case 'lgteam': App.lgTeam = App.lgTeam === v || !v ? null : v; render(); break;
       case 'lgid': App.lgId = v; App.lgTeam = null; render(); break;
@@ -2337,7 +2321,7 @@
       case 'tf-close': App.tfOpen = false; App.tfPick = []; render(); break;
       case 'tf-pick': { const a = App.tfPick || []; const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else { a.push(v); if (a.length > 2) a.shift(); } App.tfPick = a; render(); break; }
       case 'tf-apply': if (armed('tf', el, '한 번 더 누르면 확정') && Sim.changeFocus(App.st, App.tfPick)) { App.tfOpen = false; App.tfPick = []; save(); render(); } break;
-      case 'post': if (armed('post', el, '한 번 더 누르면 신청') && Sim.requestPosting(App.st)) { save(); startLoading(() => { App.view = 'main'; render(); window.scrollTo(0, 0); showEvent(); }, 'post'); } break;
+      case 'post': if (armed('post', el, '한 번 더 누르면 신청') && Sim.requestPosting(App.st)) { App.st.me.flags.postSeen = true; App.st.me.flags.postAsk = App.st.year; $modal.innerHTML = ''; save(); startLoading(() => { App.view = 'main'; render(); window.scrollTo(0, 0); showEvent(); }, 'post'); } break;
       case 'recopen': App.recOpen = App.recOpen === v ? null : v; render(); break;
     }
   });
