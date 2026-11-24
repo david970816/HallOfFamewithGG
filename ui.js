@@ -152,12 +152,16 @@
 
   // ---------- 공통 조각 ----------
   function barsHTML(r, keys, cls, chg) {
-    return `<div class="bars ${cls || ''}">${keys.map(k => { const v = Sim.disp(r[k]); const d = Sim.dispD(chg && chg[k]); return `<div class="bar"><span class="lbl">${Sim.LABEL[k]}</span><span class="trk"><span class="fill ${v >= 80 ? 'hi' : ''}" style="width:${v}%"></span></span><span class="v">${v}</span>${chg ? `<span class="dvc">${d ? `<i class="dv ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</i>` : ''}</span>` : ''}</div>`; }).join('')}</div>`;
+    return `<div class="bars ${cls || ''}">${keys.map(k => { const v = Sim.disp(r[k]); const d = Sim.dispD(chg && chg[k], r[k]); return `<div class="bar"><span class="lbl">${Sim.LABEL[k]}</span><span class="trk"><span class="fill ${v >= 80 ? 'hi' : ''}" style="width:${v}%"></span></span><span class="v">${v}</span>${chg ? `<span class="dvc">${d ? `<i class="dv ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</i>` : ''}</span>` : ''}</div>`; }).join('')}</div>`;
   }
   function lastChg(st) { const h = st.hist[st.hist.length - 1]; return h && h.chg ? h.chg : null; }
-  function chgChips(chg, keys) {
-    const list = Object.entries(chg || {}).filter(([k]) => !keys || keys.indexOf(k) >= 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-    return list.length ? `<div class="changes">${list.map(([k, d]) => `<span class="chg ${d > 0 ? 'up' : 'down'}">${Sim.LABEL[k]} ${d > 0 ? '+' : ''}${Sim.dispD(d)}</span>`).join('')}</div>` : '<div class="muted small">능력치 변화 없음</div>';
+  // 67차: 변화량은 화면 숫자 차이로 (r = 변화 뒤 내부 능력치). 화면 숫자가 안 바뀐 항목은 뺀다
+  function dispChg(chg, keys, r) {
+    return Object.entries(chg || {}).filter(([k]) => !keys || keys.indexOf(k) >= 0).map(([k, d]) => [k, Sim.dispD(d, r ? r[k] : null)]).filter(([, d]) => d).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  }
+  function chgChips(chg, keys, r) {
+    const list = dispChg(chg, keys, r);
+    return list.length ? `<div class="changes">${list.map(([k, d]) => `<span class="chg ${d > 0 ? 'up' : 'down'}">${Sim.LABEL[k]} ${d > 0 ? '+' : ''}${d}</span>`).join('')}</div>` : '<div class="muted small">능력치 변화 없음</div>';
   }
   function miniBars(r, keys) {
     return `<div class="mini-bars">${keys.map(k => { const v = Sim.disp(r[k]); return `<div class="bar"><span class="lbl">${Sim.LABEL[k]}</span><span class="trk"><span class="fill" style="width:${v}%"></span></span><span class="v">${v}</span></div>`; }).join('')}</div>`;
@@ -996,7 +1000,8 @@
       if (h.pit && h.pit.outs) line.push(`${h.pit.fut ? fut : ''}${Sim.fmtPitShort(h.pit)}`);
       if (h.inj) line.push('부상으로 시즌 전체 결장 · 0경기');
       const where = h.stage === 'pro' || h.war != null ? `${h.team} · ${h.lvl}` : h.team;
-      const ovr = h.ovr != null ? `<span class="s-ovr">OVR <b class="num">${Sim.disp(h.ovr)}</b>${h.ovrD ? `<i class="dv ${h.ovrD > 0 ? 'up' : 'down'}">${h.ovrD > 0 ? '▲' : '▼'}${Math.abs(Sim.dispD(h.ovrD))}</i>` : ''}</span>` : '';
+      const hD = h.ovr != null && h.ovrD ? Sim.dispD(h.ovrD, h.ovr) : 0;
+      const ovr = h.ovr != null ? `<span class="s-ovr">OVR <b class="num">${Sim.disp(h.ovr)}</b>${hD ? `<i class="dv ${hD > 0 ? 'up' : 'down'}">${hD > 0 ? '▲' : '▼'}${Math.abs(hD)}</i>` : ''}</span>` : '';
       const aw = (h.awards || (h.note ? h.note.split(', ') : [])).filter(Boolean);
       return `<div class="season-item">
         <div class="s-head"><b class="num">${h.year}</b><span class="muted small">${h.age}세 · ${esc(where)}</span><span class="spacer"></span>${h.war != null && !(h.bat && h.bat.fut && !h.pit) ? `<span class="s-war">WAR <b class="num">${f1(h.war)}</b></span>` : ''}</div>
@@ -1006,7 +1011,7 @@
         ${line.length ? `<div class="small s-line">${line.map(esc).join('<br>')}</div>` : '<div class="tiny muted">출전 기록 없음</div>'}
         ${aw.length ? `<div class="stamps sm">${aw.map(a => `<span class="stamp ${/MVP|우승|골든/.test(a) ? 'gold' : /각성|전성기|커리어 하이/.test(a) ? 'peak' : ''}">${esc(a)}</span>`).join('')}</div>` : ''}
         <div class="s-chg"><span class="tiny muted">시즌 후 능력치</span>${ovr}</div>
-        ${h.chg ? chgChips(h.chg, keys) : '<div class="tiny muted">(이전 버전 기록이라 변화 정보 없음)</div>'}
+        ${h.chg ? chgChips(h.chg, keys, h.r) : '<div class="tiny muted">(이전 버전 기록이라 변화 정보 없음)</div>'}
       </div>`;
     }).join('');
     return `<div class="panel"><h3>역대 시즌</h3>${sum}${ovrSpark(H)}${items}</div>`;
@@ -1334,7 +1339,8 @@
   function viewResult() {
     const st = App.st, res = App.res, me = st.me;
     const shownKeys = me.twoWay ? Sim.ALL : Sim.mainKeys(me);
-    const ch = Object.entries(res.changes || {}).filter(([k]) => shownKeys.indexOf(k) >= 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    const ch = dispChg(res.changes, shownKeys, me.r);
+    const ovrD = res.ovrD ? Sim.dispD(res.ovrD, res.ovr) : 0;
     const team = res.team;
     const ps = res.psLine;
     let psTxt = '';
@@ -1354,8 +1360,8 @@
       ${res.peak ? `<div class="panel reveal peak-banner ${res.peak.phase}"><div class="peak-title">${esc(res.peak.title)}</div><div class="peak-text">${esc(res.peak.text)}</div></div>` : ''}
       ${team ? `<div class="panel reveal"><h3>팀</h3><div><b>${esc(team.name)}</b> <span class="muted">${esc(team.record || '')}</span></div>${team.tourn && team.tourn.length ? `<div class="small muted" style="margin-top:4px">${team.tourn.map(esc).join(' · ')}</div>` : ''}${psTxt ? `<div class="small" style="margin-top:6px">${psTxt}</div>` : ''}</div>` : ''}
       ${res.leaderLine || rv ? `<div class="panel reveal"><h3>리그 속의 나</h3>${res.leaderLine ? `<div class="small">${esc(res.leaderLine)}</div>` : ''}${rv ? `<div class="vs" style="margin-top:10px"><div><b>${esc(me.name)}</b><div class="tiny muted">WAR ${f1(rv.myWar || 0)}</div></div><div class="mid">VS</div><div class="r"><b>${esc(rv.name)}</b> <span class="tiny muted">${esc(rv.team)}</span><div class="tiny muted">${esc(rv.line)} · WAR ${f1(rv.war)}</div></div></div>` : ''}</div>` : ''}
-      <div class="panel reveal"><h3>능력치 변화</h3>${ch.length ? `<div class="changes">${ch.map(([k, d]) => `<span class="chg ${d > 0 ? 'up' : 'down'}">${Sim.LABEL[k]} ${d > 0 ? '+' : ''}${Sim.dispD(d)}</span>`).join('')}</div>` : '<div class="muted small">변화 없음</div>'}
-        <div class="small muted" style="margin-top:8px">오버롤 ${Sim.disp(res.ovr)}${res.ovrD ? ` <i class="dv ${res.ovrD > 0 ? 'up' : 'down'}">${res.ovrD > 0 ? '▲' : '▼'}${Math.abs(Sim.dispD(res.ovrD))}</i>` : ''}${res.scout ? ` · 스카우트 관심도: <b style="color:var(--ink)">${esc(res.scout)}</b>` : ''}${res.salary ? ` · 내년 연봉 ${Sim.man(res.salary)}` : ''}</div></div>
+      <div class="panel reveal"><h3>능력치 변화</h3>${ch.length ? `<div class="changes">${ch.map(([k, d]) => `<span class="chg ${d > 0 ? 'up' : 'down'}">${Sim.LABEL[k]} ${d > 0 ? '+' : ''}${d}</span>`).join('')}</div>` : '<div class="muted small">변화 없음</div>'}
+        <div class="small muted" style="margin-top:8px">오버롤 ${Sim.disp(res.ovr)}${ovrD ? ` <i class="dv ${ovrD > 0 ? 'up' : 'down'}">${ovrD > 0 ? '▲' : '▼'}${Math.abs(ovrD)}</i>` : ''}${res.scout ? ` · 스카우트 관심도: <b style="color:var(--ink)">${esc(res.scout)}</b>` : ''}${res.salary ? ` · 내년 연봉 ${Sim.man(res.salary)}` : ''}</div></div>
       ${res.intl && res.intl.length ? `<div class="panel reveal"><h3>국제대회</h3>${res.intl.map(t => `<div class="small" style="margin-top:4px"><b>${esc(t.name)}</b>${t.exempt ? ' <span class="tiny muted">(병역 혜택 대회)</span>' : ''} — ${t.selected ? (t.outcome ? (t.outcome === '소집 고사' ? '국가대표에 뽑혔지만 소집을 고사했다.' : `<b style="color:var(--gold)">국가대표 출전 · ${esc(t.outcome)}</b>`) : '<b style="color:var(--gold)">국가대표 발탁</b>') : `<span class="muted">선발 실패 · ${esc(t.why || '')}</span>`}</div>`).join('')}</div>` : ''}
       ${res.invest && res.invest.length ? `<div class="panel reveal"><h3>투자 결과</h3>${res.invest.map(t => `<div class="small" style="margin-top:4px">${esc(t)}</div>`).join('')}</div>` : ''}
       ${res.news && res.news.length ? `<div class="panel reveal"><h3>팬 반응</h3>${res.news.map(n => `<div class="news">${esc(n)}</div>`).join('')}</div>` : ''}
