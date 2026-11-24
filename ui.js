@@ -740,7 +740,7 @@
       <div class="home-hero">
         <canvas id="hero-pix" class="hero-pix hero-wide" width="64" height="26" aria-label="투수가 던지고 타자가 받아치는 픽셀 그림"></canvas>
         <h1><span class="nw">골든글러브:</span> <span class="nw">명예의 전당으로</span></h1>
-        <p class="hero-sub">골글 들고 명전까지,<br>고교 야구부 벤치 끝자리에서 시작하는<br>야구선수 한 명의 인생</p>
+        <p class="hero-sub">골글 들고 명전으로,<br>고교 야구부 벤치 끝자리에서 시작하는<br>야구선수 한 명의 인생</p>
       </div>
       <div class="home-actions">
         ${sv && !sv.done ? contCard(sv) : ''}
