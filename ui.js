@@ -950,11 +950,11 @@
       <button class="btn block" data-act="inv-close" style="margin-top:12px">닫기</button>
     </div></div>`;
   }
-  // ---------- 68차: 포스팅 자격이 되면 비시즌마다 한 번 팝업으로 묻는다 ----------
+  // ---------- 68차: 포스팅 자격이 처음 생기면 한 번 팝업으로 묻는다 (이후는 인생 탭) ----------
   function maybePostPop() {
     const st = App.st;
-    if (!st || st.done || st.pending.length || $modal.innerHTML.trim() || !Sim.canPost(st) || st.me.flags.postAsk === st.year) return;
-    const first = !st.me.flags.postSeen;
+    if (!st || st.done || st.pending.length || $modal.innerHTML.trim() || !Sim.canPost(st) || st.me.flags.postSeen) return;   // 68차: 자격이 처음 생겼을 때 한 번만
+    const first = true;
     $modal.innerHTML = `<div class="overlay"><div class="sheet post-alert"><div class="row"><span class="pa-ico">✈️</span><div class="pa-t"><b>${first ? '포스팅 자격을 얻었다!' : '포스팅 신청 가능'}</b><div class="tiny muted">해외(일본·미국) 구단 응찰을 받아볼 수 있다. 능력치·최근 성적이 모자라면 응찰이 없을 수도 있다. 비시즌에 한 번.<br>지금 넘겨도 <b>인생</b> 탭에서 언제든 신청할 수 있다.</div></div></div>
       <div class="row" style="gap:8px;margin-top:10px"><button class="btn small" data-act="post-hide">이번엔 넘기기</button><button class="btn small primary" data-act="post" style="flex:1">포스팅 신청</button></div></div></div>`;
   }
