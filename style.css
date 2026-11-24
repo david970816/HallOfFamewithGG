@@ -81,6 +81,29 @@ input.t, select.t { width: 100%; padding: 10px 12px; border-radius: 10px; border
 .hero-pix.hero-wide { width: calc(100% + 32px); max-width: none; margin: -6px -16px 2px; border-radius: 0; box-shadow: none;
   -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent); mask-image: linear-gradient(to bottom, #000 72%, transparent); }
 .home-hero:has(.hero-wide) { padding-top: 24px; }   /* 시안 A-1: 아이콘 줄과 조금 띄움 */
+.money-line { margin-top: 8px; text-align: center; color: var(--ink2); line-height: 1.6; word-break: keep-all; }
+/* 66차: 상점 */
+.shop-entry { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 12px; padding: 11px 14px; border: 0; border-radius: 14px; background: var(--paper); color: var(--ink); text-align: left; box-shadow: var(--shadow); }
+.shop-ico { font-size: 22px; }
+.shop-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shop-t b { font-size: 15px; }
+.shop-t .tiny { color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shop-cash { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.shop-cash .tiny { color: var(--mute); }
+.shop-cash b { font-size: 15px; color: var(--gold); }
+.shop-sheet { max-height: 86vh; overflow: auto; }
+.shop-tabs button { font-size: 12.5px; padding: 7px 2px; }
+.shop-note { margin: 10px 0 6px; }
+.shop-msg { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--paper2); }
+.shop-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.shop-item .si-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.shop-item .si-t b { font-size: 14px; }
+.shop-item .btn { flex: none; min-width: 74px; }
+.shop-item.on .si-t b { color: var(--green); }
+.si-on { font-size: 12px; font-weight: 800; color: var(--green); }
+.shop-sub { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--paper2); line-height: 1.6; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--red); font-weight: 800; text-decoration: underline; font-size: inherit; }
+.inv-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 10px; border-bottom: 1px dashed var(--line); }
 /* 66차: 이어하기 카드 */
 .cont-card { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; text-align: left; padding: 10px 12px 10px 12px; border-radius: 16px; color: var(--ink);
   background: #e9ada4;

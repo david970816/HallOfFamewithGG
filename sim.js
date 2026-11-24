@@ -41,8 +41,8 @@ const Sim = (function () {
       // 19차: 등급 비율 → 15/30/50/5
       // 60차: 등급 비율 → 8/24/58/10
       // 62차: 범위 → 90~99 / 76~95 / 60~80 / 45~60 (등급끼리 조금씩 겹친다)
-      // 63차: 등급 비율 → 10/30/50/10
-      ['역대급', 0.10, 90, 99], ['특급', 0.30, 76, 95], ['유망', 0.50, 60, 80], ['평범', 0.10, 45, 60]],
+      // 63차: 등급 비율 → 10/30/50/10 · 66차: 10/35/45/10
+      ['역대급', 0.10, 90, 99], ['특급', 0.35, 76, 95], ['유망', 0.45, 60, 80], ['평범', 0.10, 45, 60]],
     paSpread: 8,
     // 4차 패치: iron 36→35, long 34→33, 하락 가속 추가 (통산 WAR 상위권이 41세에도 5~8 WAR를 찍던 문제)
     aging: { iron: [35, 1, 2], long: [33, 1, 3], std: [32, 2, 4], early: [30, 3, 5] },
@@ -139,8 +139,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     // 5.9 돈 (만원)
     // 27차: 연봉 인상 — 시장가치 1억+2억/WAR → 1.5억+2.8억/WAR, 비FA 연봉은 시장가치에 더 빨리 붙게(arbRate), FA는 계약금(총액의 faBonus) 별도
     // 64차: 다년계약 중 연봉 재협상 — 시장가치 ≥ 계약 연봉 × ratio, 직전 시즌 WAR ≥ war(예전 눈금), gap년 간격. 인상은 차이의 share만큼(최소 minUp배)
-    renego: { ratio: 1.5, war: 4, gap: 2, share: 0.6, minUp: 1.15 },
-    minSal: 3000, valBase: 15000, valPerWAR: 28000, arbRate: 0.45, arbWinRate: 0.65, faBonus: [0.3, 0.45],
+    renego: { ratio: 1.5, war: 4, gap: 2, share: 0.35, minUp: 1.15 },   // 66차: 재협상 인상 폭 0.6 → 0.35 (FA 전 인상 속도에 맞춤)
+    minSal: 3000, valBase: 15000, valPerWAR: 28000, arbRate: 0.2, arbWinRate: 0.35, raiseCap: 2, faBonus: [0.3, 0.45],   // 66차: FA 전 인상 속도 낮춤 (시장가치와의 차이를 45% → 20%씩, 조정 승리 다음 해 65% → 35%, 한 해 최대 2배)
     // 리그
     teamNoise: 0.03, adjDecay: 0.5,
     rookieBase: [41, 48], rookieStarP: 0.05,
@@ -785,7 +785,22 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       if (pen > 0) { all(-pen); me.lastFatigue = Math.round(pen * 10) / 10; } else me.lastFatigue = 0;
       delete f.load;
     }
+    // 66차: 상점 — 전담 트레이너 자동 연장(돈이 모자라면 계약 종료) · 이번 시즌 장비(능력치 +2)
+    if (me.stage === 'pro') {
+      const sh = shopNow(st);
+      if (me.trainerAuto && !sh.trainer) { if (cashOf(me) >= SHOP.trainer.price) { me.spent = (me.spent || 0) + SHOP.trainer.price; sh.trainer = true; } else me.trainerAuto = false; }
+      for (const k of sh.gear) me.tmp[k] = (me.tmp[k] || 0) + SHOP.gear.plus;
+    }
   }
+  // 66차: 상점 효과 — 이번 시즌 성장 보너스(레슨 +10% · 해외 연수 +15~30%, 어릴수록 높게) · 노화 감소 · 부상 감소
+  function shopGrowBonus(st) {
+    const me = st.me, sh = me.shop; if (!sh || sh.year !== st.year || !sh.train) return 0;
+    if (sh.train === 'lesson') return SHOP.lesson.grow;
+    if (sh.train === 'abroad') { const [lo, hi] = SHOP.abroad.grow, t = clamp((30 - me.age) / 10, 0, 1); return lo + (hi - lo) * clamp(0.6 * t + 0.4 * R(), 0, 1); }
+    return 0;
+  }
+  function agingMul(st) { const me = st.me, pk = me.perks || {}, tr = me.shop && me.shop.year === st.year && me.shop.trainer; return (tr ? 1 - SHOP.trainer.aging : 1) * (pk.capsule ? 1 - SHOP.capsule.aging : 1); }
+  function injMul(st) { const me = st.me, pk = me.perks || {}, tr = me.shop && me.shop.year === st.year && me.shop.trainer; return (tr ? 1 - SHOP.trainer.inj : 1) * (pk.bionic ? 1 - SHOP.bionic.inj : 1); }
   function rerollAging(st) {
     const me = st.me; me.flags.rerolled = true;
     const order = ['early', 'std', 'long', 'iron'];
@@ -1211,7 +1226,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     if (me.role === 'B' && fitOf(me) < 50) p += 0.01;   // 64차: 내구도 → 기초체력
     if (me.flags.injRisk) p += me.flags.injRisk / 3;
     if (me.pos === 'RP') p *= 0.8;
-    return clamp(p, 0.01, 0.2);
+    p *= injMul(st);   // 66차: 전담 트레이너 · 바이오닉 관절
+    return clamp(p, 0.005, 0.2);
   }
   function meSegStart(st, m, seg, team) {
     const me = st.me;
@@ -1758,6 +1774,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     me.shown = Object.assign({}, me.r);
     res.ovr = myOVR(me);
     res.ovrD = Math.round(res.ovr) - Math.round(ovr0);
+    res.invest = settleInvest(st, false);   // 66차: 이번 시즌으로 만기가 된 투자 결과
     // 역대 시즌 기록에 이 해의 요약·능력치 변화를 붙인다
     let h = st.hist[st.hist.length - 1];
     if (!h || h.year !== res.year) { h = { year: res.year, age: res.age, team: res.team ? res.team.name : '', lvl: '-', bat: null, pit: null, war: null, note: res.awards.join(', ') }; st.hist.push(h); }
@@ -1833,13 +1850,14 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const tf = tf2On ? me.tf2.keys : (me.trainFocus || []);
     const tfOn = tf.length && (tf2On || age < TF.untilAge);
     const mk = mainKeys(me);
+    const sb = 1 + shopGrowBonus(st);   // 66차: 개인 레슨 · 해외 연수
     for (const [keys, mult] of sets) {
       if (!mult) continue;
       for (const k of keys) {
         const gap = me.pa[k] - me.r[k];
         if (gap <= 0) continue;
         const fw = !tfOn ? 1 : tf.indexOf(k) >= 0 ? TF.focus : mk.indexOf(k) >= 0 ? TF.other : 1;
-        let g = gap * ageC * playCoef * typeC * mult * fw * R.range(BAL.growthRand[0], BAL.growthRand[1]);
+        let g = gap * ageC * playCoef * typeC * mult * fw * sb * R.range(BAL.growthRand[0], BAL.growthRand[1]);
         if (k === 'spd' && me.flags.catcher) g *= 0.5;
         me.r[k] = clamp(me.r[k] + g, 20, 99);
       }
@@ -1861,9 +1879,10 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         ? { vel: 0, sta: 0, stf: 1, brk: 1, men: 2, ctl: 2, spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 }
         : { spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 };
       const keys = me.twoWay ? ALL : mainKeys(me);
+      const am = agingMul(st);   // 66차: 전담 트레이너 · 동결건조 캡슐
       for (const k of keys) {
         if (y < off[k]) continue;
-        let d = R.int(ag[1], ag[2]) * (1 + BAL.agingAccel * y);   // 4차: 해가 갈수록 하락 가속
+        let d = R.int(ag[1], ag[2]) * (1 + BAL.agingAccel * y) * am;   // 4차: 해가 갈수록 하락 가속
         if (me.flags.slowDecline && (k === 'spd' || k === 'def')) d *= 0.6;
         if (me.flags.cornerOF && k === 'def') d *= 0.6;
         me.r[k] = clamp(me.r[k] - d, 20, 99);
@@ -1904,6 +1923,95 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   // FA 몸값 배율 (협상력 30 ≈ 0.99, 50 ≈ 1.05, 70 ≈ 1.11, 95 ≈ 1.19)
   function agentMul(me) { return 0.9 + agencyOf(me).skill * 0.003; }
   // 64차: 구단 제안 금액 — 평균은 에이전트 협상력(agentMul), 제안마다 조금씩 흔들린다
+  // ---------- 66차: 상점 · 투자 (보유 자금) ----------
+  //   보유 자금 = 통산 수령액(earnings+계약금) − 쓴 돈(spent) + 투자 손익(invPL) − 투자 중인 원금. 통산 수령액(누적 연봉 뱃지)은 줄지 않는다
+  //   단위 만원. 훈련·장비는 그 시즌만, 전담 트레이너는 시즌마다 결제(자동 연장), 특별 상품은 커리어 한 번(영구)
+  const SHOP = {
+    lesson: { name: '개인 레슨', price: 500, grow: 0.10 },
+    abroad: { name: '해외 연수 프로그램', grow: [0.15, 0.30], price: o => o < 70 ? 1000 : o < 80 ? 2500 : o < 90 ? 5000 : 10000 },
+    trainer: { name: '전담 트레이너', price: 80000, aging: 0.25, inj: 0.15 },
+    gear: { price: 500, max: 2, plus: 2 / 1.25 },   // 화면 능력치 +2 (내부 눈금 1.6)
+    GEAR: { con: '맞춤 배트', pow: '파워 배트', eye: '스포츠 고글', spd: '경량 스파이크', def: '프로 글러브', arm: '송구 밴드',
+      vel: '고성능 스파이크', stf: '그립 강화 로진', ctl: '정밀 투구 글러브', brk: '변화구 그립 패드', sta: '컨디셔닝 밴드', men: '명상 헤드폰' },
+    bionic: { name: '바이오닉 관절 수술', price: 3000000, inj: 0.5, plus: 3 / 1.25 },
+    capsule: { name: '동결건조 캡슐', price: 10000000, aging: 0.5 },
+    INV: { safe: { name: '안전형 (채권)', yrs: 1, p: 0.85, win: 0.10, lose: 0.05 }, normal: { name: '일반형 (주식)', yrs: 1, p: 0.6, win: 0.30, lose: 0.25 },
+      risky: { name: '고위험 (스타트업)', yrs: 2, p: 0.3, win: 3.0, lose: 0.8 } },
+    invMin: 1000, invMax: 3,
+  };
+  function locked(me) { return (me.inv || []).reduce((a, x) => a + x.amt, 0); }
+  function cashOf(me) { return Math.max(0, Math.round((me.earnings || 0) + (me.bonus || 0) - (me.spent || 0) + (me.invPL || 0) - locked(me))); }
+  function shopNow(st) { const me = st.me; if (!me.shop || me.shop.year !== st.year) me.shop = { year: st.year, train: null, gear: [], trainer: false }; return me.shop; }
+  function abroadPrice(me) { return SHOP.abroad.price(disp(myOVR(me))); }
+  // 화면용 상태
+  function shopState(st) {
+    bind(st); const me = st.me, sh = shopNow(st), pk = me.perks || {};
+    return { open: me.stage === 'pro' && !st.done, cash: cashOf(me), year: st.year, age: me.age, train: sh.train, gear: sh.gear.slice(), trainer: !!sh.trainer, trainerAuto: !!me.trainerAuto,
+      prices: { lesson: SHOP.lesson.price, abroad: abroadPrice(me), trainer: SHOP.trainer.price, gear: SHOP.gear.price, bionic: SHOP.bionic.price, capsule: SHOP.capsule.price },
+      gearKeys: (me.twoWay ? ALL : mainKeys(me)).map(k => ({ k, name: SHOP.GEAR[k], label: LABEL[k] })), gearMax: SHOP.gear.max,
+      bionic: !!pk.bionic, capsule: !!pk.capsule, inv: (me.inv || []).map(x => Object.assign({}, x, { name: SHOP.INV[x.kind].name })), invMax: SHOP.invMax, invMin: SHOP.invMin, INV: SHOP.INV,
+      spent: me.spent || 0, invPL: me.invPL || 0, earned: (me.earnings || 0) + (me.bonus || 0), salary: me.salary || 0 };
+  }
+  // 구매: what = lesson | abroad | trainer | trainerOff | gear(arg=능력치) | bionic | capsule | invest(arg={kind, amt})
+  function shopBuy(st, what, arg) {
+    bind(st); const me = st.me, sh = shopNow(st);
+    if (me.stage !== 'pro' || st.done) return { ok: false, msg: '프로 선수만 이용할 수 있다.' };
+    const pay = (p, txt) => { if (cashOf(me) < p) return { ok: false, msg: '보유 자금이 모자라다.' }; me.spent = (me.spent || 0) + p; return { ok: true, msg: txt }; };
+    if (what === 'lesson' || what === 'abroad') {
+      if (sh.train) return { ok: false, msg: '이번 시즌 훈련은 이미 정했다.' };
+      const p = what === 'lesson' ? SHOP.lesson.price : abroadPrice(me);
+      const r = pay(p, `${SHOP[what].name} 등록 (${man(p)})`); if (r.ok) sh.train = what; return r;
+    }
+    if (what === 'trainer') {
+      if (sh.trainer) { me.trainerAuto = true; return { ok: true, msg: '전담 트레이너와 계속 함께한다.' }; }
+      const r = pay(SHOP.trainer.price, `전담 트레이너 고용 (시즌 ${man(SHOP.trainer.price)}, 다음 시즌부터 자동 연장)`); if (r.ok) { sh.trainer = true; me.trainerAuto = true; } return r;
+    }
+    if (what === 'trainerOff') { me.trainerAuto = false; return { ok: true, msg: '이번 시즌이 끝나면 전담 트레이너 계약을 끝낸다.' }; }
+    if (what === 'gear') {
+      if (!SHOP.GEAR[arg] || sh.gear.indexOf(arg) >= 0) return { ok: false, msg: '살 수 없는 장비다.' };
+      if (sh.gear.length >= SHOP.gear.max) return { ok: false, msg: `장비는 시즌마다 ${SHOP.gear.max}개까지.` };
+      const r = pay(SHOP.gear.price, `${SHOP.GEAR[arg]} 구입 (${LABEL[arg]} +2, 이번 시즌)`); if (r.ok) sh.gear.push(arg); return r;
+    }
+    if (what === 'bionic' || what === 'capsule') {
+      me.perks = me.perks || {}; if (me.perks[what]) return { ok: false, msg: '이미 받았다.' };
+      const r = pay(SHOP[what].price, `${SHOP[what].name} 완료`);
+      if (r.ok) {
+        me.perks[what] = { year: st.year, age: me.age };
+        if (what === 'bionic') {   // 타자: 어깨·컨택 / 투수: 구속·구위 / 이도류: 넷 다 +3
+          const ks = me.twoWay ? ['arm', 'con', 'vel', 'stf'] : me.role === 'P' ? ['vel', 'stf'] : ['arm', 'con'];
+          for (const k of ks) { me.r[k] = clamp(me.r[k] + SHOP.bionic.plus, 20, 99); me.pa[k] = Math.max(me.pa[k], me.r[k]); }
+          me.shown = Object.assign({}, me.r); me.perks.bionic.keys = ks;
+        }
+        story(st, `${me.age}세, ${SHOP[what].name}.`);
+      }
+      return r;
+    }
+    if (what === 'invest') {
+      const I = arg && SHOP.INV[arg.kind], amt = Math.round(+(arg && arg.amt) || 0);
+      if (!I) return { ok: false, msg: '없는 상품이다.' };
+      if ((me.inv || []).length >= SHOP.invMax) return { ok: false, msg: `투자는 동시에 ${SHOP.invMax}개까지.` };
+      if (amt < SHOP.invMin) return { ok: false, msg: `최소 ${man(SHOP.invMin)}부터.` };
+      if (cashOf(me) < amt) return { ok: false, msg: '보유 자금이 모자라다.' };
+      me.inv = (me.inv || []).concat([{ kind: arg.kind, amt, year: st.year, due: st.year + I.yrs - 1 }]);
+      return { ok: true, msg: `${I.name}에 ${man(amt)} 투자. ${I.yrs}년 뒤 결과가 나온다.` };
+    }
+    return { ok: false, msg: '' };
+  }
+  // 투자 결과 — 시즌이 끝날 때(due 시즌까지 치른 뒤) / 은퇴할 때는 남은 투자를 모두 정리
+  function settleInvest(st, all) {
+    const me = st.me, out = []; if (!me.inv || !me.inv.length) return out;
+    const keep = [];
+    for (const x of me.inv) {
+      if (!all && x.due > st.year) { keep.push(x); continue; }
+      const I = SHOP.INV[x.kind], ok = R() < I.p, pl = Math.round(x.amt * (ok ? I.win : -I.lose));
+      me.invPL = (me.invPL || 0) + pl;
+      if (ok && x.kind === 'risky') me.flags.investGod = true;
+      me.invLog = (me.invLog || []).concat([{ year: st.year, kind: x.kind, amt: x.amt, pl, ok }]).slice(-40);
+      out.push(`${ok ? '📈 투자 성공' : '📉 투자 실패'} · ${I.name} ${man(x.amt)} → ${pl >= 0 ? '+' : '−'}${man(Math.abs(pl))}`);
+    }
+    me.inv = keep;
+    return out;
+  }
   function agentRoll(me) { return clamp(agentMul(me) + R.gauss() * 0.05, 0.85, 1.35); }
   // 64차: 계약 기간 — 성적(최근 가중 WAR)·능력치(표시 OVR)로 정하고, 좋은 선수도 가끔(15%) 1년 계약
   function offerYrs(me, maxY) {
@@ -2045,6 +2153,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         ns = Math.max(ns, me.salary * 0.7, BAL.minSal * sm);
         if (me.flags.ytBump) { ns *= 1.05; delete me.flags.ytBump; }
         if (ns > BAL.minSal * sm) ns = Math.max(BAL.minSal * sm, ns * agentRoll(me));   // 64차: 에이전시 협상력에 따라 제시액이 조금씩 달라진다
+        if (me.salary >= BAL.minSal * sm) ns = Math.min(ns, me.salary * BAL.raiseCap);   // 66차: FA 전 한 해 인상은 최대 raiseCap배
         me.salary = Math.round(ns / 100) * 100;
         // 62차: 구단 제시액을 바로 확정하지 않고 협상 테이블에 올린다 (수락·인상 요구·연봉조정)
         if (!leaving && team && !st.done) queue(st, 'salary', { offer: me.salary, prev: res.salaryPrev || null });
@@ -2463,7 +2572,9 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     const keys = mainKeys(me);
     const paRate = Math.round(100 * avgKeys(st.car.peakR || me.r, keys) / avgKeys(me.pa, keys));
     const mtp = mainTeamPos(st);
+    const invEnd = settleInvest(st, true);   // 66차: 은퇴할 때 남은 투자는 그 자리에서 정리
     const f = {
+      money: { earned: (me.earnings || 0) + (me.bonus || 0), spent: me.spent || 0, invPL: me.invPL || 0, cash: cashOf(me), invEnd, investGod: !!me.flags.investGod },
       mainTeam: mtp.teamId, mainTeamName: mtp.teamName, mainPos: mtp.pos,
       hof: hofCheck(st),
       name: me.name, pos: me.pos, twoWay: me.twoWay, retireAge: me.age, score: careerScore(st), war: car.war, warB: car.warB, warP: car.warP,
@@ -2980,7 +3091,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     {
       id: 'extension', forced: true, cat: '커리어', who: '단장',
       // 65차: FA를 넘기는 계약은 없다 — 연장계약도 FA 직전 시즌까지 (FA는 늦추지 않는다)
-      prep: (st, me, c) => { c.sal = Math.round(marketValue(me) * 0.8 * agentRoll(me) / 100) * 100; c.yrs = Math.max(1, Math.min(5, (me.faAt || 99) - me.svc)); },   // 64차: 에이전시
+      prep: (st, me, c) => { c.sal = Math.round(Math.max(me.salary * 1.2, Math.min(marketValue(me) * 0.45, me.salary * BAL.raiseCap)) * agentRoll(me) / 100) * 100; c.yrs = Math.max(1, Math.min(5, (me.faAt || 99) - me.svc)); },   // 64차: 에이전시
       text: (st, me, c) => `"FA까지 남은 ${c.yrs}년, 연봉 협상 없이 연 ${man(c.sal)}으로 고정 계약 어떻습니까?"`,
       ch: (st, me, c) => [`${c.yrs}년 계약에 서명`, '매년 연봉 협상을 한다'], safe: 0,
       res: (st, me, i, c) => {
@@ -3014,7 +3125,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
         if (k === 'ok') { me.trust += 2; return sign(c.offer, '도장을 찍고 바로 훈련장으로 향했다.'); }
         if (k === 'multi') { const m = c.multi; me.trust += 3; me.salary = m.sal; me.contract = { salary: m.sal, until: st.year + m.yrs - 1, kind: '다년' }; story(st, `${me.age}세, ${m.yrs}년 다년계약. 연 ${man(m.sal)}.`); return `${m.yrs}년 동안 연봉 걱정은 없다.`; }
         if (k === 'arb') {
-          if (R.chance(clamp(0.35 + (c.lev.p10 - 0.5) * 0.5, 0.2, 0.65))) { const s = Math.round(Math.max(c.offer, c.offer + (c.mv - c.offer) * 0.5) / 100) * 100; story(st, `${me.age}세, 연봉조정에서 승리. 연 ${man(s)}.`); return sign(s, `조정위원회가 선수 손을 들어줬다. 연 ${man(s)}.`); }
+          if (R.chance(clamp(0.35 + (c.lev.p10 - 0.5) * 0.5, 0.2, 0.65))) { const s = Math.round(Math.min(Math.max(c.offer, c.offer + (c.mv - c.offer) * 0.25), Math.max(c.offer * 1.3, (c.prev || c.offer) * BAL.raiseCap)) / 100) * 100; /* 66차: 조정 승리도 인상 폭 제한 */ story(st, `${me.age}세, 연봉조정에서 승리. 연 ${man(s)}.`); return sign(s, `조정위원회가 선수 손을 들어줬다. 연 ${man(s)}.`); }
           me.trust -= 10; return sign(c.offer, '조정에서 졌다. 구단안대로 사인했고, 구단과의 공기가 서늘하다.');
         }
         const big = k === 'a25', p = big ? c.lev.p25 : c.lev.p10, ask = big ? c.ask25 : c.ask10, u = R();
@@ -3202,7 +3313,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     newGame, makeCandidates, playSeason, pendingItem, choose, voluntaryRetire, careerScore,
     view, debug, interest, draftRange, man, teamName, velo, ovrAt, valAt, expWAR, scoreParts, mainKeys, oppKeys, LCFG, cfgOf, leagueList, myLeagueId, findTeam,
     AVG, OBP, SLG, OPS, ERA, IP, ipTxt, rate3, posName, hofGoals, salaryLeverage, AGENCY, fmtBatShort, fmtPitShort,
-    PROF, OPT, disp, dispD, canPost, requestPosting, changeFocus, _internal: { batRates, pitRates, batExp, pitExp, ERA_SCALE, FORM0 },
+    PROF, OPT, disp, dispD, canPost, requestPosting, changeFocus, shopState, shopBuy, _internal: { batRates, pitRates, batExp, pitExp, ERA_SCALE, FORM0 },
   };
 })();
 if (typeof module !== 'undefined') module.exports = Sim;

@@ -450,11 +450,19 @@
         : e >= 300 ? ['..........', '..........', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '..........', '..........', '..........']
         : ['..........', '..........', '..........', '..YYYYYY..', '.YYYYYYYY.', '..YYYYYY..', '..........', '..........', '..........', '..........'],
     })),
+    // ---- 66차: 보유 자금 · 투자 ----
+    ...[[50, 'green'], [300, 'blue'], [1000, 'purple']].map(([e, tone]) => ({
+      id: 'cash' + e, name: `보유 자금 ${e.toLocaleString()}억`, desc: `은퇴할 때 남은 자산 ${e.toLocaleString()}억 원 이상`, tone,
+      chk: st => ((st.final && st.final.money && st.final.money.cash) || 0) >= e * 10000,
+      ico: ['..........', '.YYYYYYYY.', '.YKKKKKKY.', '.YKYYYYKY.', '.YKYWWYKY.', '.YKYYYYKY.', '.YKKKKKKY.', '.YYYYYYYY.', '..........', '..........'],
+    })),
+    { id: 'investGod', name: '투자의 신', desc: '고위험 투자에 성공한다', tone: 'orange', chk: st => !!(st.final && st.final.money && st.final.money.investGod),
+      ico: ['.........W', '........WW', '.......W.W', '......W...', '.W...W....', 'W.W.W.....', '...W......', '..........', 'YYYYYYYYYY', '..........'] },
   ];
   // 홈에서 보여 주는 순서 (커리어 정점 → 개인 수상 → 우승·국제대회 → 타자 → 투수 → 여정)
   const BADGE_ORDER = ['top50', 'hof', 'retnum', 'unanimous', 'season50', 'war100', 'ggAll', 'ggSeason', 'mvp', 'mvp4', 'gg5', 'roy', 'roymvp', 'titles10',
     'ring', 'dynasty', 'ws', 'smvp', 'wbc', 'og', 'hr500', 'hit3000', 'avg400', 'hr50', 'w200', 'k3000', 'sv400', 'era1',
-    'intl8', 'tw', 'mlb', 'three', 'oneclub', 'age43', 'underdog', 'late', 'earn100', 'earn300', 'earn500', 'earn1000'];
+    'intl8', 'tw', 'mlb', 'three', 'oneclub', 'age43', 'underdog', 'late', 'earn100', 'earn300', 'earn500', 'earn1000', 'cash50', 'cash300', 'cash1000', 'investGod'];
   BADGES.sort((a, b) => BADGE_ORDER.indexOf(a.id) - BADGE_ORDER.indexOf(b.id));
   // ---------- 65차: 영구결번 ----------
   //   명예의 전당 헌액 + 한 팀(T)에서: 1군 8시즌 이상 · WAR 40 이상 · T 소속으로 골든글러브 2회 이상
@@ -907,13 +915,58 @@
       ${cardHTML(st)}
       <div class="flip-hint">카드를 누르면 뒷면(연도별 기록)이 보인다</div>
       <div class="info">${info.map(([k, x]) => `<div><div class="k">${k}</div><div class="v">${esc(x)}</div></div>`).join('')}</div>
-      ${contractPanel(st)}${pitchPanel(st)}
-      ${focusPanel(st)}      ${me.stage === 'hs' && me.grade >= 3 && me.scout.perf.length ? `<div class="panel small">예상 지명 범위: <b>${Sim.draftRange(me.scout.score)}</b></div>` : ''}
+      ${shopEntry(st)}${focusPanel(st)}${contractPanel(st)}${pitchPanel(st)}      ${me.stage === 'hs' && me.grade >= 3 && me.scout.perf.length ? `<div class="panel small">예상 지명 범위: <b>${Sim.draftRange(me.scout.score)}</b></div>` : ''}
       <div class="tabs">${[['career', '역대 시즌'], ['total', '역대 커리어'], ['comp', '대회별'], ['league', '리그'], ['story', Sim.canPost(st) ? '인생 ✈' : '인생']].map(([k, t]) => `<button class="${App.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${t}</button>`).join('')}</div>
       ${App.tab === 'career' ? tabCareer(st) : App.tab === 'comp' ? tabComp(st) : App.tab === 'total' ? tabTotal(st) : App.tab === 'league' ? tabLeague(st) : tabStory(st)}
       ${me.stage === 'pro' && me.age >= 35 ? `<div style="text-align:center;margin-top:16px"><button class="btn small" data-act="retire-now">은퇴 선언</button></div>` : ''}
       ${App.dev ? adminPanel(st) : ''}
       <div class="dock"><div class="in"><button class="btn go block" data-act="${pending ? 'next-event' : 'play'}">${goLabel}</button></div></div>`;
+  }
+  // ---------- 66차: 상점 (프로 입단 후, 시즌 진행 전) ----------
+  function shopEntry(st) {
+    if (st.me.stage !== 'pro' || st.done) return '';
+    const S = Sim.shopState(st);
+    const tags = [S.train ? (S.train === 'lesson' ? '레슨' : '해외 연수') : '', S.gear.length ? `장비 ${S.gear.length}` : '', S.trainer ? '트레이너' : '', S.inv.length ? `투자 ${S.inv.length}` : ''].filter(Boolean);
+    return `<button class="shop-entry" data-act="shop-open"><span class="shop-ico">🏪</span><span class="shop-t"><b>상점</b><span class="tiny">${tags.length ? '이번 시즌: ' + tags.join(' · ') : '훈련 · 메디컬 · 장비 · 특별 · 투자'}</span></span><span class="shop-cash"><span class="tiny">보유 자금</span><b class="num">${Sim.man(S.cash)}</b></span></button>`;
+  }
+  function showShop(msg) {
+    const st = App.st, S = Sim.shopState(st), tab = App.shopTab || 'train', M = Sim.man;
+    const T = [['train', '훈련'], ['medical', '메디컬'], ['gear', '장비'], ['special', '특별'], ['invest', '투자']];
+    const item = (title, desc, price, act, v, state) => `<div class="shop-item ${state === 'on' ? 'on' : ''}"><div class="si-t"><b>${title}</b><span class="tiny muted">${desc}</span></div>
+      ${state === 'on' ? '<span class="si-on">적용 중</span>' : state === 'off' ? '<span class="si-off tiny muted">이번 시즌 선택 끝</span>' : `<button class="btn small ${S.cash < price ? '' : 'primary'}" data-act="shop-buy" data-v="${act}" ${v != null ? `data-arg="${v}"` : ''} ${S.cash < price ? 'disabled' : ''}>${M(price)}</button>`}</div>`;
+    let body = '';
+    if (tab === 'train') {
+      body = `<div class="tiny muted shop-note">시즌마다 하나만 고를 수 있다</div>
+        ${item('개인 레슨', '성장량 증가', S.prices.lesson, 'lesson', null, S.train === 'lesson' ? 'on' : S.train ? 'off' : '')}
+        ${item('해외 연수 프로그램', '성장량 증가', S.prices.abroad, 'abroad', null, S.train === 'abroad' ? 'on' : S.train ? 'off' : '')}`;
+    } else if (tab === 'medical') {
+      body = `<div class="tiny muted shop-note">시즌마다 자동으로 연장되고 언제든 끝낼 수 있다</div>
+        ${item('전담 트레이너 고용', '노화 방지 · 연 결제', S.prices.trainer, 'trainer', null, S.trainer ? 'on' : '')}
+        ${S.trainer ? `<div class="shop-sub tiny">${S.trainerAuto ? `다음 시즌에도 자동 연장 (${M(S.prices.trainer)}) · <button class="linkbtn" data-act="shop-buy" data-v="trainerOff">계약 끝내기</button>` : '이번 시즌이 끝나면 계약이 끝난다 · <button class="linkbtn" data-act="shop-buy" data-v="trainer">다시 연장</button>'}</div>` : ''}`;
+    } else if (tab === 'gear') {
+      body = `<div class="tiny muted shop-note">이번 시즌만 능력치 +2 · 시즌마다 ${S.gearMax}개까지 (${S.gear.length}/${S.gearMax})</div>
+        ${S.gearKeys.map(g => item(g.name, `${g.label} +2 (이번 시즌)`, S.prices.gear, 'gear', g.k, S.gear.indexOf(g.k) >= 0 ? 'on' : S.gear.length >= S.gearMax ? 'off' : '')).join('')}`;
+    } else if (tab === 'special') {
+      body = `<div class="tiny muted shop-note">커리어에 한 번 · 효과는 은퇴할 때까지 계속된다</div>
+        ${item('바이오닉 관절 수술', `부상 확률 감소 · ${st.me.twoWay ? '어깨·컨택·구속·구위' : st.me.role === 'P' ? '구속·구위' : '어깨·컨택'} 증가`, S.prices.bionic, 'bionic', null, S.bionic ? 'on' : '')}
+        ${item('동결건조 캡슐', '노화 속도 방지', S.prices.capsule, 'capsule', null, S.capsule ? 'on' : '')}`;
+    } else {
+      // 투자 금액: 1,000만 · 5,000만 · 1억 · 3억 · 5억 · 10억 · 연봉 절반 · 연봉 전액 (보유 자금 안에서만)
+      const amts = [[1000], [5000], [10000], [30000], [50000], [100000], [Math.floor(S.salary / 2 / 100) * 100, '연봉 절반'], [S.salary, '연봉 전액']]
+        .filter(([a]) => a >= S.invMin && a <= S.cash);
+      body = `<div class="tiny muted shop-note">결과는 1~2년 뒤 시즌 결산에 나온다 · 동시에 ${S.invMax}개까지 · 은퇴하면 그 자리에서 정리</div>
+        ${Object.entries(S.INV).map(([k, I]) => `<div class="shop-item"><div class="si-t"><b>${I.name}</b><span class="tiny muted">${I.yrs}년 뒤 · 성공 ${Math.round(I.p * 100)}% → +${Math.round(I.win * 100)}% · 실패 → −${Math.round(I.lose * 100)}%</span></div></div>
+          <div class="inv-row">${S.inv.length >= S.invMax ? '<span class="tiny muted">진행 중인 투자가 가득 찼다</span>' : amts.length ? amts.map(([a, t]) => `<button class="btn small" data-act="shop-buy" data-v="invest" data-arg="${k}:${a}" ${t ? `title="${M(a)}"` : ''}>${t ? `${t} <span class="tiny muted">${M(a)}</span>` : M(a)}</button>`).join('') : '<span class="tiny muted">보유 자금이 모자라다</span>'}</div>`).join('')}
+        ${S.inv.length ? `<div class="shop-sub tiny"><b>진행 중</b><br>${S.inv.map(x => `${x.name} ${M(x.amt)} · ${x.due}시즌 뒤 결과`).join('<br>')}</div>` : ''}
+        <div class="shop-sub tiny muted">지금까지 투자 손익 ${S.invPL >= 0 ? '+' : '−'}${M(Math.abs(S.invPL))}</div>`;
+    }
+    $modal.innerHTML = `<div class="overlay" data-act="shop-close"><div class="sheet shop-sheet">
+      <div class="row"><b style="font-size:17px">🏪 상점</b><span class="spacer"></span><span class="small">보유 자금 <b class="num">${M(S.cash)}</b></span></div>
+      <div class="seg shop-tabs" style="margin-top:10px">${T.map(([k, t]) => `<button class="${tab === k ? 'on' : ''}" data-act="shop-tab" data-v="${k}">${t}</button>`).join('')}</div>
+      ${msg ? `<div class="shop-msg small">${esc(msg)}</div>` : ''}
+      <div class="shop-body">${body}</div>
+      <button class="btn block" data-act="shop-close" style="margin-top:12px">닫기</button>
+    </div></div>`;
   }
   function devText(st) {
     const d = Sim.debug(st), me = st.me;
@@ -1301,6 +1354,7 @@
       <div class="panel reveal"><h3>능력치 변화</h3>${ch.length ? `<div class="changes">${ch.map(([k, d]) => `<span class="chg ${d > 0 ? 'up' : 'down'}">${Sim.LABEL[k]} ${d > 0 ? '+' : ''}${Sim.dispD(d)}</span>`).join('')}</div>` : '<div class="muted small">변화 없음</div>'}
         <div class="small muted" style="margin-top:8px">오버롤 ${Sim.disp(res.ovr)}${res.ovrD ? ` <i class="dv ${res.ovrD > 0 ? 'up' : 'down'}">${res.ovrD > 0 ? '▲' : '▼'}${Math.abs(Sim.dispD(res.ovrD))}</i>` : ''}${res.scout ? ` · 스카우트 관심도: <b style="color:var(--ink)">${esc(res.scout)}</b>` : ''}${res.salary ? ` · 내년 연봉 ${Sim.man(res.salary)}` : ''}</div></div>
       ${res.intl && res.intl.length ? `<div class="panel reveal"><h3>국제대회</h3>${res.intl.map(t => `<div class="small" style="margin-top:4px"><b>${esc(t.name)}</b>${t.exempt ? ' <span class="tiny muted">(병역 혜택 대회)</span>' : ''} — ${t.selected ? (t.outcome ? (t.outcome === '소집 고사' ? '국가대표에 뽑혔지만 소집을 고사했다.' : `<b style="color:var(--gold)">국가대표 출전 · ${esc(t.outcome)}</b>`) : '<b style="color:var(--gold)">국가대표 발탁</b>') : `<span class="muted">선발 실패 · ${esc(t.why || '')}</span>`}</div>`).join('')}</div>` : ''}
+      ${res.invest && res.invest.length ? `<div class="panel reveal"><h3>투자 결과</h3>${res.invest.map(t => `<div class="small" style="margin-top:4px">${esc(t)}</div>`).join('')}</div>` : ''}
       ${res.news && res.news.length ? `<div class="panel reveal"><h3>팬 반응</h3>${res.news.map(n => `<div class="news">${esc(n)}</div>`).join('')}</div>` : ''}
       ${App.dev ? `<div class="dev">계산 ${res.ms_time}ms · playCoef ${f2(res.playCoef || 0)} · 구간 ${(res.segs || []).join(',')}</div>` : ''}
       <div class="dock"><div class="in"><button class="btn go block" data-act="res-next">${st.done ? '은퇴 결산 보기' : st.pending.length ? `다음 (${st.pending.length}개의 결정)` : '다음 시즌으로'}</button></div></div>`;
@@ -1528,6 +1582,7 @@
           ${rankLine(st)}
         </div>
         <div class="small" style="margin-top:12px;text-align:center">${f.retireAge}세 은퇴 · ${f.seasons}시즌 · 통산 WAR <b>${f1(f.war)}</b>${f.twoWay ? ` (타 ${f1(f.warB)} / 투 ${f1(f.warP)})` : ''}<br>${esc(f.teams.join(' → ') || '프로 무대를 밟지 못했다')}</div>
+        ${f.money && f.money.earned ? `<div class="tiny money-line">💰 통산 수령 ${Sim.man(f.money.earned)} · 사용 ${Sim.man(f.money.spent)} · 투자 손익 ${f.money.invPL >= 0 ? '+' : '−'}${Sim.man(Math.abs(f.money.invPL))} · 남은 자산 <b>${Sim.man(f.money.cash)}</b></div>` : ''}
         ${lines.length ? `<div class="small" style="margin-top:10px;display:grid;gap:4px">${lines.map(l => `<div>${esc(l)}</div>`).join('')}</div>` : ''}
         ${f.awList.length || f.ms.length ? `<div class="stamps">${f.awList.filter(awKeep).slice(0, 14).map(a => `<span class="stamp ${/MVP|우승|골든/.test(a) ? 'gold' : ''}">${esc(a)}</span>`).join('')}${f.ms.map(m => `<span class="ribbon">${esc(m)}</span>`).join('')}</div>` : ''}
         <div class="small muted" style="margin-top:10px">통산 수입 ${Sim.man(Math.max(0, f.earnings))}${f.draft ? ` · ${f.draft.year} 드래프트 ${f.draft.round}${typeof f.draft.round === 'number' ? '라운드' : ''}` : ' · 드래프트 미지명'}</div>
@@ -2188,6 +2243,15 @@
       case 'cr-start': startCareer(); bump('create'); if (App.st && App.st.me) { App.st.me.flags.pos0 = App.st.me.flags.closer ? 'CL' : App.st.me.pos; App.st.me.flags.t0 = Date.now(); App.st.me.flags.ms = {}; App.st.me.flags.r0 = abilOf(App.st.me.r); App.st.me.flags.role0 = App.st.me.role; save(); bump('pos_' + App.st.me.flags.pos0); } break;
       case 'flip': App.flipped = !App.flipped; el.classList.toggle('flipped', App.flipped); break;
       case 'tab': App.tab = v; render(); break;
+      // 66차: 상점
+      case 'shop-open': App.shopTab = App.shopTab || 'train'; showShop(); break;
+      case 'shop-close': if (e.target.closest('.sheet') && !e.target.closest('[data-act="shop-close"].btn')) break; $modal.innerHTML = ''; render(); break;
+      case 'shop-tab': App.shopTab = v; showShop(); break;
+      case 'shop-buy': {
+        let arg = el.dataset.arg;
+        if (v === 'invest' && arg) { const [kind, a] = arg.split(':'); const cash = Sim.shopState(App.st).cash; arg = { kind, amt: a === 'half' ? Math.floor(cash / 2 / 100) * 100 : +a }; }
+        const r = Sim.shopBuy(App.st, v, arg); if (r.ok) save(); showShop(r.msg); break;
+      }
       case 'lgcat': App.lgCat = v; render(); break;
       case 'lgteam': App.lgTeam = App.lgTeam === v || !v ? null : v; render(); break;
       case 'lgid': App.lgId = v; App.lgTeam = null; render(); break;
