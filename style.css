@@ -103,7 +103,9 @@ input.t, select.t { width: 100%; padding: 10px 12px; border-radius: 10px; border
 .si-on { font-size: 12px; font-weight: 800; color: var(--green); }
 .shop-sub { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--paper2); line-height: 1.6; }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--red); font-weight: 800; text-decoration: underline; font-size: inherit; }
-.inv-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 10px; border-bottom: 1px dashed var(--line); }
+.inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 0 10px; border-bottom: 1px dashed var(--line); }
+.inv-row .btn:disabled { opacity: .35; filter: grayscale(1); }
+.inv-min { margin-left: 2px; }
 /* 66차: 이어하기 카드 */
 .cont-card { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; text-align: left; padding: 10px 12px 10px 12px; border-radius: 16px; color: var(--ink);
   background: #e9ada4;

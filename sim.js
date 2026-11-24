@@ -1937,7 +1937,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     bionic: { name: '바이오닉 관절 수술', price: 3000000, inj: 0.5, plus: 3 / 1.25 },
     capsule: { name: '동결건조 캡슐', price: 10000000, aging: 0.5 },
     INV: { safe: { name: '안전형 (채권)', yrs: 1, p: 0.85, win: 0.10, lose: 0.05 }, normal: { name: '일반형 (주식)', yrs: 1, p: 0.6, win: 0.30, lose: 0.25 },
-      risky: { name: '고위험 (스타트업)', yrs: 2, p: 0.3, win: 3.0, lose: 0.8 } },
+      risky: { name: '고위험 (스타트업)', yrs: 2, p: 0.3, win: 3.0, lose: 0.8, min: 30000 } },   // 스타트업은 최소 3억
     invMin: 1000, invMax: 3,
   };
   function locked(me) { return (me.inv || []).reduce((a, x) => a + x.amt, 0); }
@@ -1991,7 +1991,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       const I = arg && SHOP.INV[arg.kind], amt = Math.round(+(arg && arg.amt) || 0);
       if (!I) return { ok: false, msg: '없는 상품이다.' };
       if ((me.inv || []).length >= SHOP.invMax) return { ok: false, msg: `투자는 동시에 ${SHOP.invMax}개까지.` };
-      if (amt < SHOP.invMin) return { ok: false, msg: `최소 ${man(SHOP.invMin)}부터.` };
+      if (amt < (I.min || SHOP.invMin)) return { ok: false, msg: `최소 ${man(I.min || SHOP.invMin)}부터.` };
       if (cashOf(me) < amt) return { ok: false, msg: '보유 자금이 모자라다.' };
       me.inv = (me.inv || []).concat([{ kind: arg.kind, amt, year: st.year, due: st.year + I.yrs - 1 }]);
       return { ok: true, msg: `${I.name}에 ${man(amt)} 투자. ${I.yrs}년 뒤 결과가 나온다.` };

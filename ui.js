@@ -951,12 +951,15 @@
         ${item('바이오닉 관절 수술', `부상 확률 감소 · ${st.me.twoWay ? '어깨·컨택·구속·구위' : st.me.role === 'P' ? '구속·구위' : '어깨·컨택'} 증가`, S.prices.bionic, 'bionic', null, S.bionic ? 'on' : '')}
         ${item('동결건조 캡슐', '노화 속도 방지', S.prices.capsule, 'capsule', null, S.capsule ? 'on' : '')}`;
     } else {
-      // 투자 금액: 1,000만 · 5,000만 · 1억 · 3억 · 5억 · 10억 · 보유금 절반 (보유 자금 안에서만)
-      const amts = [[1000], [5000], [10000], [30000], [50000], [100000], [Math.floor(S.cash / 2 / 100) * 100, '보유금 절반']]
-        .filter(([a]) => a >= S.invMin && a <= S.cash);
+      // 투자 금액 (상품마다 다름, 보유 자금 안에서만)
+      //   채권·주식: 1,000만 · 5,000만 · 1억 · 5억 · 연봉 절반 / 스타트업: 3억 · 5억 · 10억 · 연봉 절반 · 보유금 절반 (최소 3억)
+      const half = x => Math.floor(x / 2 / 100) * 100;
+      const AMT = { safe: [[1000], [5000], [10000], [50000], [half(S.salary), '연봉 절반']], normal: [[1000], [5000], [10000], [50000], [half(S.salary), '연봉 절반']],
+        risky: [[30000], [50000], [100000], [half(S.salary), '연봉 절반'], [half(S.cash), '보유금 절반']] };
+      const amtsOf = k => AMT[k].map(([a, t]) => [a, t, a >= (S.INV[k].min || S.invMin) && a <= S.cash]);   // 못 사는 금액은 숨기지 않고 회색으로
       body = `<div class="tiny shop-note"><b>중복 선택 가능</b> <span class="muted">· 동시에 ${S.invMax}개까지 · 결과는 1~2년 뒤 시즌 결산에 나온다 · 은퇴하면 그 자리에서 정리</span></div>
         ${Object.entries(S.INV).map(([k, I]) => `<div class="shop-item"><div class="si-t"><b>${I.name}</b><span class="tiny muted">${I.yrs}년 뒤 · 성공 ${Math.round(I.p * 100)}% → +${Math.round(I.win * 100)}% · 실패 → −${Math.round(I.lose * 100)}%</span></div></div>
-          <div class="inv-row">${S.inv.length >= S.invMax ? '<span class="tiny muted">진행 중인 투자가 가득 찼다</span>' : amts.length ? amts.map(([a, t]) => `<button class="btn small" data-act="shop-buy" data-v="invest" data-arg="${k}:${a}" ${t ? `title="${M(a)}"` : ''}>${t ? `${t} <span class="tiny muted">${M(a)}</span>` : M(a)}</button>`).join('') : '<span class="tiny muted">보유 자금이 모자라다</span>'}</div>`).join('')}
+          <div class="inv-row">${S.inv.length >= S.invMax ? '<span class="tiny muted">진행 중인 투자가 가득 찼다</span>' : amtsOf(k).map(([a, t, ok]) => `<button class="btn small" data-act="shop-buy" data-v="invest" data-arg="${k}:${a}" ${ok ? '' : 'disabled'} ${t ? `title="${M(a)}"` : ''}>${t ? `${t} <span class="tiny muted">${M(a)}</span>` : M(a)}</button>`).join('')}${I.min ? `<span class="tiny muted inv-min">최소 ${M(I.min)}</span>` : ''}</div>`).join('')}
         ${S.inv.length ? `<div class="shop-sub tiny"><b>진행 중</b><br>${S.inv.map(x => `${x.name} ${M(x.amt)} · ${x.due}시즌 뒤 결과`).join('<br>')}</div>` : ''}
         <div class="shop-sub tiny muted">지금까지 투자 손익 ${S.invPL >= 0 ? '+' : '−'}${M(Math.abs(S.invPL))}</div>`;
     }
