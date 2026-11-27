@@ -794,13 +794,17 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   }
   // 66차: 상점 효과 — 이번 시즌 성장 보너스(레슨 +10% · 해외 연수 +15~30%, 어릴수록 높게) · 노화 감소 · 부상 감소
   function shopGrowBonus(st) {
+    const lab = st.me.perks && st.me.perks.lab ? SHOP.lab.grow : 0;   // 69차: 개인 트레이닝 센터 (매 시즌)
+    return lab + shopTrainBonus(st);
+  }
+  function shopTrainBonus(st) {
     const me = st.me, sh = me.shop; if (!sh || sh.year !== st.year || !sh.train) return 0;
     if (sh.train === 'lesson') return SHOP.lesson.grow;
     if (sh.train === 'abroad') { const [lo, hi] = SHOP.abroad.grow, t = clamp((30 - me.age) / 10, 0, 1); return lo + (hi - lo) * clamp(0.6 * t + 0.4 * R(), 0, 1); }
     return 0;
   }
-  function agingMul(st) { const me = st.me, pk = me.perks || {}, tr = me.shop && me.shop.year === st.year && me.shop.trainer; return (tr ? 1 - SHOP.trainer.aging : 1) * (pk.capsule ? 1 - SHOP.capsule.aging : 1); }
-  function injMul(st) { const me = st.me, pk = me.perks || {}, tr = me.shop && me.shop.year === st.year && me.shop.trainer; return (tr ? 1 - SHOP.trainer.inj : 1) * (pk.bionic ? 1 - SHOP.bionic.inj : 1); }
+  function agingMul(st) { const me = st.me, pk = me.perks || {}, tr = me.shop && me.shop.year === st.year && me.shop.trainer; return (tr ? 1 - SHOP.trainer.aging : 1) * (pk.capsule ? 1 - SHOP.capsule.aging : 1) * (pk.stem ? 1 - SHOP.stem.aging : 1); }
+  function injMul(st) { const me = st.me, pk = me.perks || {}, tr = me.shop && me.shop.year === st.year && me.shop.trainer; return (tr ? 1 - SHOP.trainer.inj : 1) * (pk.bionic ? 1 - SHOP.bionic.inj : 1) * (pk.stem ? 1 - SHOP.stem.inj : 1); }
   function rerollAging(st) {
     const me = st.me; me.flags.rerolled = true;
     const order = ['early', 'std', 'long', 'iron'];
@@ -1936,6 +1940,13 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       vel: '고성능 스파이크', stf: '그립 강화 로진', ctl: '정밀 투구 글러브', brk: '변화구 그립 패드', sta: '컨디셔닝 밴드', men: '명상 헤드폰' },
     bionic: { name: '바이오닉 관절 수술', price: 3000000, inj: 0.5, plus: 3 / 1.25 },
     capsule: { name: '동결건조 캡슐', price: 10000000, aging: 0.5 },
+    // 69차: 특별 관리 추가 (바이오닉 관절과 비슷한 가격대, 커리어 한 번 · 영구)
+    lasik: { name: '라식 · 동체시력 교정', price: 2000000, plus: 3 / 1.25 },   // 타자 선구·컨택 / 투수 제구·변화 +3 (이도류 넷 다)
+    stem: { name: '줄기세포 재생 치료', price: 4000000, aging: 0.25, inj: 0.2 },
+    lab: { name: '개인 트레이닝 센터 건립', price: 5000000, grow: 0.05 },   // 매 시즌 성장 +5%
+    PERKS: ['bionic', 'lasik', 'stem', 'lab', 'capsule'],
+    // 69차: 이벤트 개인 훈련 비용 — 연봉의 일정 비율 (최소·최대). 보유 자금에서 낸다
+    TRAIN: { academy: [0.5, 2000, 50000], winter: [0.3, 1000, 30000], bulk: [0.2, 1000, 20000], video: [0.2, 1000, 20000] },
     INV: { safe: { name: '안전형 (채권)', yrs: 1, p: 0.85, win: 0.10, lose: 0.05 }, normal: { name: '일반형 (주식)', yrs: 1, p: 0.6, win: 0.30, lose: 0.25 },
       risky: { name: '고위험 (스타트업)', yrs: 2, p: 0.3, win: 3.0, lose: 0.8, min: 30000 } },   // 스타트업은 최소 3억
     invMin: 1000, invMax: 3,
@@ -1950,13 +1961,28 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     return { open: me.stage === 'pro' && !st.done, cash: cashOf(me), year: st.year, age: me.age, train: sh.train, gear: sh.gear.slice(), trainer: !!sh.trainer, trainerAuto: !!me.trainerAuto,
       prices: { lesson: SHOP.lesson.price, abroad: abroadPrice(me), trainer: SHOP.trainer.price, gear: SHOP.gear.price, bionic: SHOP.bionic.price, capsule: SHOP.capsule.price },
       gearKeys: (me.twoWay ? ALL : mainKeys(me)).map(k => ({ k, name: SHOP.GEAR[k], label: LABEL[k] })), gearMax: SHOP.gear.max,
-      bionic: !!pk.bionic, capsule: !!pk.capsule, inv: (me.inv || []).map(x => Object.assign({}, x, { name: SHOP.INV[x.kind].name })), invMax: SHOP.invMax, invMin: SHOP.invMin, INV: SHOP.INV,
+      bionic: !!pk.bionic, capsule: !!pk.capsule,
+      perks: SHOP.PERKS.map(k => ({ k, name: SHOP[k].name, price: SHOP[k].price, have: !!pk[k], year: pk[k] && pk[k].year, desc: perkDesc(k, me) })), inv: (me.inv || []).map(x => Object.assign({}, x, { name: SHOP.INV[x.kind].name })), invMax: SHOP.invMax, invMin: SHOP.invMin, INV: SHOP.INV,
       spent: me.spent || 0, invPL: me.invPL || 0, earned: (me.earnings || 0) + (me.bonus || 0), salary: me.salary || 0 };
   }
-  // 구매: what = lesson | abroad | trainer | trainerOff | gear(arg=능력치) | bionic | capsule | invest(arg={kind, amt})
+  // 69차: 특별 관리 — 오르는 능력치 (바이오닉: 어깨·컨택 / 구속·구위, 라식: 선구·컨택 / 제구·변화)
+  function perkKeys(k, me) {
+    if (k === 'bionic') return me.twoWay ? ['arm', 'con', 'vel', 'stf'] : me.role === 'P' ? ['vel', 'stf'] : ['arm', 'con'];
+    if (k === 'lasik') return me.twoWay ? ['eye', 'con', 'ctl', 'brk'] : me.role === 'P' ? ['ctl', 'brk'] : ['eye', 'con'];
+    return [];
+  }
+  function perkDesc(k, me) {
+    const ks = perkKeys(k, me).map(x => LABEL[x]).join('·');
+    return { bionic: `부상 확률 −50% · ${ks} +3`, lasik: `${ks} +3`, stem: '노화 속도 −25% · 부상 확률 −20%', lab: '매 시즌 능력치 성장 +5%', capsule: '노화 속도 −50%' }[k];
+  }
+  // 69차: 이벤트 개인 훈련 비용 (만원) — 연봉 × 비율, 최소·최대
+  function trainCost(me, id) { const [r, lo, hi] = SHOP.TRAIN[id]; return clamp(Math.round((me.salary || 0) * r / 100) * 100, lo, hi); }
+  function trainPay(st, me, id) { const c = trainCost(me, id); if (cashOf(me) < c) return false; me.spent = (me.spent || 0) + c; return true; }
+  const trainLbl = (me, id, txt) => `${txt} (${man(trainCost(me, id))}${cashOf(me) < trainCost(me, id) ? ' · 자금 부족' : ''})`;
+  // 구매: what = lesson | abroad | trainer | trainerOff | gear(arg=능력치) | 특별 관리(SHOP.PERKS) | invest(arg={kind, amt})
   function shopBuy(st, what, arg) {
     bind(st); const me = st.me, sh = shopNow(st);
-    if (me.stage !== 'pro' || st.done) return { ok: false, msg: '프로 선수만 이용할 수 있다.' };
+    if (st.done) return { ok: false, msg: '은퇴한 선수는 이용할 수 없다.' };   // 69차: 고교 때부터 이용 가능 (보유 자금 안에서)
     const pay = (p, txt) => { if (cashOf(me) < p) return { ok: false, msg: '보유 자금이 모자라다.' }; me.spent = (me.spent || 0) + p; return { ok: true, msg: txt }; };
     if (what === 'lesson' || what === 'abroad') {
       if (sh.train) return { ok: false, msg: '이번 시즌 훈련은 이미 정했다.' };
@@ -1973,15 +1999,15 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       if (sh.gear.length >= SHOP.gear.max) return { ok: false, msg: `장비는 시즌마다 ${SHOP.gear.max}개까지.` };
       const r = pay(SHOP.gear.price, `${SHOP.GEAR[arg]} 구입 (${LABEL[arg]} +2, 이번 시즌)`); if (r.ok) sh.gear.push(arg); return r;
     }
-    if (what === 'bionic' || what === 'capsule') {
+    if (SHOP.PERKS.includes(what)) {
       me.perks = me.perks || {}; if (me.perks[what]) return { ok: false, msg: '이미 받았다.' };
       const r = pay(SHOP[what].price, `${SHOP[what].name} 완료`);
       if (r.ok) {
         me.perks[what] = { year: st.year, age: me.age };
-        if (what === 'bionic') {   // 타자: 어깨·컨택 / 투수: 구속·구위 / 이도류: 넷 다 +3
-          const ks = me.twoWay ? ['arm', 'con', 'vel', 'stf'] : me.role === 'P' ? ['vel', 'stf'] : ['arm', 'con'];
-          for (const k of ks) { me.r[k] = clamp(me.r[k] + SHOP.bionic.plus, 20, 99); me.pa[k] = Math.max(me.pa[k], me.r[k]); }
-          me.shown = Object.assign({}, me.r); me.perks.bionic.keys = ks;
+        const ks = perkKeys(what, me);   // 바이오닉·라식: 능력치 +3 (영구)
+        if (ks.length) {
+          for (const k of ks) { me.r[k] = clamp(me.r[k] + SHOP[what].plus, 20, 99); me.pa[k] = Math.max(me.pa[k], me.r[k]); }
+          me.shown = Object.assign({}, me.r); me.perks[what].keys = ks;
         }
         story(st, `${me.age}세, ${SHOP[what].name}.`);
       }
@@ -3158,22 +3184,22 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       res: (st, me, i) => { if (i === 0) { if (R.chance(0.6)) addR(me, 'con', 6); else { addR(me, 'con', -4); me.flags.restore = Object.assign(me.flags.restore || {}, { con: 4 }); } return '새 폼이 아직 어색하다.'; } me.trust -= 8; return '코치가 말없이 돌아섰다.'; } },
     { id: 'slider', cat: '훈련', who: '투수코치', cond: (st, me) => me.stage !== 'hs' && (me.role === 'P') && me.age <= 25, text: '"슬라이더 하나 장착해 보자. 직구만으로는 한계가 온다."', ch: ['슬라이더를 배운다', '직구에 집중한다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { const u = R(); if (u < 0.7) addR(me, 'brk', 8); else if (u < 0.85) me.flags.injRisk = (me.flags.injRisk || 0) + 0.06; return '그립을 쥔 손가락에 물집이 잡혔다.'; } addR(me, 'vel', 3); return '불펜에서 직구만 백 개를 던졌다.'; } },
-    { id: 'bulk', cat: '훈련', who: '트레이닝 코치', cond: (st, me) => me.role === 'B' && me.r.pow < 60 && me.stage !== 'hs', text: '비시즌, 벌크업할까? 체중을 늘리면 타구에 힘이 실린다.', ch: ['벌크업', '날렵하게 유지'], safe: 1,
-      res: (st, me, i) => { if (i === 0) { addR(me, 'pow', 7); addR(me, 'spd', -3); return '하루 다섯 끼. 유니폼이 꽉 낀다.'; } addR(me, 'spd', 2); return '스프린트 훈련을 늘렸다.'; } },
+    { id: 'bulk', cat: '훈련', who: '트레이닝 코치', cond: (st, me) => me.role === 'B' && me.r.pow < 60 && me.stage !== 'hs', text: '비시즌, 벌크업할까? 체중을 늘리면 타구에 힘이 실린다.', ch: (st, me) => [trainLbl(me, 'bulk', '식단·트레이너 붙여 벌크업'), '날렵하게 유지'], safe: 1,
+      res: (st, me, i) => { if (i === 0) { if (!trainPay(st, me, 'bulk')) return '보유 자금이 모자라 벌크업 프로그램을 접었다.'; addR(me, 'pow', 7); addR(me, 'spd', -3); return '하루 다섯 끼. 유니폼이 꽉 낀다.'; } addR(me, 'spd', 2); return '스프린트 훈련을 늘렸다.'; } },
     { id: 'switch', cat: '훈련', who: '타격코치', cond: (st, me) => me.role === 'B' && me.bats === 'R' && me.age <= 21, text: '"발이 빠른데 좌타석에도 서 보는 건 어때? 스위치 히터."', ch: ['도전한다', '거절한다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { addR(me, 'con', -5); if (R.chance(0.7)) { me.bats = 'S'; me.flags.restore = Object.assign(me.flags.restore || {}, { con: 7 }); } else me.flags.restore = Object.assign(me.flags.restore || {}, { con: 5 }); return '왼쪽 타석이 낯설다.'; } return '"오른쪽에서 더 잘 치면 된다."'; } },
     { id: 'sidearm', cat: '훈련', who: '투수코치', cond: (st, me) => me.role === 'P' && me.age <= 25 && me.stage !== 'hs' && me.r.vel < 60, text: '"구속이 정체됐어. 팔 각도를 내려 사이드암으로 가보자."', ch: ['바꾼다', '유지한다'], safe: 1,
       res: (st, me, i) => { if (i === 0) { addR(me, 'vel', -4); addR(me, 'stf', 6); addR(me, 'brk', 6); if (R.chance(0.3)) { addR(me, 'stf', 4); addR(me, 'brk', 4); } return '공이 낯선 궤적으로 휘어 들어갔다.'; } return '정통파의 자존심.'; } },
-    { id: 'academy', cat: '훈련', who: '에이전트', cond: (st, me) => me.role === 'P' && me.stage === 'pro', text: '미국 사설 피칭 아카데미. 구속을 올려준다는데 비용이 꽤 든다.', ch: ['자비로 간다', '구단 훈련으로 충분하다'], safe: 1,
-      res: (st, me, i) => { if (i === 0) { addR(me, 'vel', R.int(3, 6)); me.earnings -= 3000; if (R.chance(0.15)) me.flags.injRisk = (me.flags.injRisk || 0) + 0.08; return '레이더건 숫자에 집착하는 겨울이었다.'; } return '익숙한 구단 시설에서 겨울을 보냈다.'; } },
+    { id: 'academy', cat: '훈련', who: '에이전트', cond: (st, me) => me.role === 'P' && me.stage === 'pro', text: '미국 사설 피칭 아카데미. 구속을 올려준다는데 비용이 꽤 든다.', ch: (st, me) => [trainLbl(me, 'academy', '자비로 간다'), '구단 훈련으로 충분하다'], safe: 1,
+      res: (st, me, i) => { if (i === 0) { if (!trainPay(st, me, 'academy')) return '보유 자금이 모자라 아카데미 등록을 포기했다.'; addR(me, 'vel', R.int(3, 6)); if (R.chance(0.15)) me.flags.injRisk = (me.flags.injRisk || 0) + 0.08; return '레이더건 숫자에 집착하는 겨울이었다.'; } return '익숙한 구단 시설에서 겨울을 보냈다.'; } },
     { id: 'philo', cat: '훈련', who: '타격코치', cond: (st, me) => me.role === 'B' && me.stage !== 'hs', text: '"너는 어떤 타자가 되고 싶냐? 공을 끝까지 보는 타자, 초구부터 때리는 타자."', ch: ['공을 본다', '초구부터 공략'], safe: 0,
       res: (st, me, i) => { if (i === 0) { addR(me, 'eye', 5); addR(me, 'con', -2); return '투구 수를 늘리는 게 즐거워졌다.'; } addR(me, 'pow', 3); addR(me, 'eye', -2); return '초구 스트라이크는 놓치지 않는다.'; } },
     { id: 'multi', cat: '훈련', who: '수비코치', cond: (st, me) => me.stage === 'pro' && me.role === 'B' && GROUP[me.pos] === 'IF' && me.lastSeason && !me.lastSeason.starter, text: '"내야 어디든 볼 수 있으면 출전 기회가 늘어난다."', ch: ['멀티 포지션 훈련', '주 포지션만 판다'], safe: 0,
       res: (st, me, i) => { if (i === 0) { addR(me, 'def', 3); me.flags.utility = true; return '글러브 세 개를 들고 다니게 됐다.'; } me.trust += 4; return '"그래, 네 자리는 네가 지켜라."'; } },
-    { id: 'video', cat: '훈련', who: '전력분석팀', cond: (st, me) => me.stage === 'pro', text: '전력분석팀이 약점 리포트를 내밀었다. 데이터대로 고쳐보라는데.', ch: ['데이터를 따른다', '내 감각을 믿는다'], safe: 0,
-      res: (st, me, i) => { if (i === 0) { addR(me, lowestKey(me), 3); return '태블릿 속 히트맵을 밤새 들여다봤다.'; } if (R.chance(0.5)) addR(me, 'men', 3); return '"야구는 숫자가 아니라 감이다."'; } },
-    { id: 'winter', cat: '훈련', who: '트레이너', cond: (st, me) => me.stage === 'pro', text: '비시즌 일정. 푹 쉴까, 해외 윈터리그에서 실전 감각을 유지할까.', ch: ['충분히 쉰다', '윈터리그에 간다'], safe: 0,
-      res: (st, me, i) => { if (i === 0) { me.care += 1; return '오랜만에 가족과 여행을 다녀왔다.'; } addR(me, R.pick(mainKeys(me)), 3); me.care -= 1; return '도미니카의 뜨거운 햇볕 아래서 공을 던졌다.'; } },
+    { id: 'video', cat: '훈련', who: '전력분석팀', cond: (st, me) => me.stage === 'pro', text: '전력분석팀이 약점 리포트를 내밀었다. 개인 분석관을 붙여 데이터대로 고쳐볼까?', ch: (st, me) => [trainLbl(me, 'video', '개인 분석관과 데이터 훈련'), '내 감각을 믿는다'], safe: 0,
+      res: (st, me, i) => { if (i === 0) { if (!trainPay(st, me, 'video')) return '보유 자금이 모자라 분석관 계약을 미뤘다.'; addR(me, lowestKey(me), 3); return '태블릿 속 히트맵을 밤새 들여다봤다.'; } if (R.chance(0.5)) addR(me, 'men', 3); return '"야구는 숫자가 아니라 감이다."'; } },
+    { id: 'winter', cat: '훈련', who: '트레이너', cond: (st, me) => me.stage === 'pro', text: '비시즌 일정. 푹 쉴까, 해외 윈터리그에서 실전 감각을 유지할까.', ch: (st, me) => ['충분히 쉰다', trainLbl(me, 'winter', '윈터리그에 간다')], safe: 0,
+      res: (st, me, i) => { if (i === 0) { me.care += 1; return '오랜만에 가족과 여행을 다녀왔다.'; } if (!trainPay(st, me, 'winter')) { me.care += 1; return '보유 자금이 모자라 윈터리그 대신 집에서 쉬었다.'; } addR(me, R.pick(mainKeys(me)), 3); me.care -= 1; return '도미니카의 뜨거운 햇볕 아래서 공을 던졌다.'; } },
 
     // ---------------- 포지션 ----------------
     { id: 'closer', cat: '포지션', who: '감독', cond: (st, me) => me.stage === 'pro' && me.role === 'P' && me.pos === 'SP' && me.r.sta < 55 && me.r.vel >= 55 && (me.roleOffersLeft == null || me.roleOffersLeft > 0) && (me.flags.roleOfferYear || 0) <= st.year - BAL.roleOffer.gap, text: '"선발로는 체력이 아쉽다. 마무리로 가보는 건 어때?"', ch: ['마무리 전향을 수락', '선발을 고수한다'], safe: 0,
@@ -3323,7 +3349,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     newGame, makeCandidates, playSeason, pendingItem, choose, voluntaryRetire, careerScore,
     view, debug, interest, draftRange, man, teamName, velo, ovrAt, valAt, expWAR, scoreParts, mainKeys, oppKeys, LCFG, cfgOf, leagueList, myLeagueId, findTeam,
     AVG, OBP, SLG, OPS, ERA, IP, ipTxt, rate3, posName, hofGoals, salaryLeverage, AGENCY, fmtBatShort, fmtPitShort,
-    PROF, OPT, disp, dispD, canPost, requestPosting, changeFocus, shopState, shopBuy, _internal: { batRates, pitRates, batExp, pitExp, ERA_SCALE, FORM0 },
+    PROF, OPT, disp, dispD, canPost, requestPosting, changeFocus, shopState, shopBuy, _internal: { batRates, pitRates, batExp, pitExp, ERA_SCALE, FORM0, batWAR, pitWAR, defLine },
   };
 })();
 if (typeof module !== 'undefined') module.exports = Sim;

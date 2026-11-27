@@ -203,6 +203,7 @@
     return `<button class="icon-btn" data-act="page" data-v="notice" title="공지사항" aria-label="공지사항">📢${dot('notice')}</button>
       <button class="icon-btn" data-act="page" data-v="patch" title="패치노트" aria-label="패치노트">📝${dot('patch')}</button>
       <button class="icon-btn txt" data-act="page" data-v="guide" title="공략집" aria-label="공략집">공략</button>
+      <button class="icon-btn txt" data-act="ask-open" title="문의하기" aria-label="문의하기">문의</button>
       ${CT.instagram ? `<a class="icon-btn ig" href="${esc(CT.instagram)}" target="_blank" rel="noopener" title="인스타그램" aria-label="인스타그램">${IG_SVG}</a>` : ''}
       ${CT.x ? `<a class="icon-btn ig" href="${esc(CT.x)}" target="_blank" rel="noopener" title="X (트위터)" aria-label="X">${X_SVG}</a>` : ''}`;
   }
@@ -229,6 +230,37 @@
       <div class="notice-pop-body">${n.body.map(p => `<p>${esc(p)}</p>`).join('')}${n.highlight ? `<p class="notice-hl">${esc(n.highlight)}</p>` : ''}</div>
       <div class="row" style="gap:8px;margin-top:12px">${more ? '<button class="btn" data-act="notice-all" style="flex:1">공지사항 전체 보기</button>' : ''}<button class="btn go" data-act="notice-close" style="flex:1">확인</button></div>
     </div></div>`;
+  }
+  // 문의하기 — Web3Forms(api.web3forms.com)로 보내면 등록한 메일로 문의가 온다. 코드에는 메일 주소 대신 Web3Forms 키만 들어간다.
+  const ASK_KEY = 'b1541f55-b481-4fb6-bb46-166597456b6b';   // Web3Forms access key (web3forms.com 에서 받는 키)
+  function askModal() {
+    $modal.innerHTML = `<div class="notice-overlay" data-act="ask-close" role="dialog" aria-modal="true" aria-labelledby="ask-title"><div class="notice-pop ask-pop">
+      <div class="notice-pop-kicker">✉️ 문의하기</div>
+      <h3 id="ask-title">건의·문의·오류 제보</h3>
+      <label class="ask-lab">종류<select id="ask-kind"><option>오류 제보</option><option>건의</option><option>기타 문의</option></select></label>
+      <label class="ask-lab">내용<textarea id="ask-body" rows="6" maxlength="2000" placeholder="오류라면 어떤 화면에서 어떤 상황에 생겼는지 적어 주세요."></textarea></label>
+      <label class="ask-lab">답장 받을 메일 <span class="muted">(선택)</span><input id="ask-mail" type="email" maxlength="100" placeholder="답장이 필요하면 적어 주세요" autocomplete="email"></label>
+      <input id="ask-bot" type="checkbox" tabindex="-1" autocomplete="off" style="display:none">
+      <div class="tiny ask-note" id="ask-status"></div>
+      <div class="row" style="gap:8px;margin-top:12px"><button class="btn" data-act="ask-close" style="flex:1">닫기</button><button class="btn go" data-act="ask-send" id="ask-send" style="flex:1">보내기</button></div>
+    </div></div>`;
+  }
+  function askSend() {
+    const $ = id => document.getElementById(id), stat = $('ask-status'), btn = $('ask-send');
+    if (!stat || !btn || btn.disabled) return;
+    const say = (t, ok) => { stat.textContent = t; stat.classList.toggle('ok', !!ok); };
+    const kind = $('ask-kind').value || '문의', body = $('ask-body').value.trim(), mail = $('ask-mail').value.trim();
+    if (!body) { say('내용을 적어 주세요.'); return; }
+    if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { say('메일 주소를 다시 확인해 주세요.'); return; }
+    if (!ASK_KEY) { say('문의 기능을 준비하고 있습니다. 잠시 뒤에 다시 시도해 주세요.'); return; }
+    btn.disabled = true; btn.textContent = '보내는 중…'; say('');
+    const data = { access_key: ASK_KEY, subject: `[골글 들고 명전으로] ${kind}`, from_name: '골글 들고 명전으로 문의', 종류: kind, 내용: body, 빌드: String(window.GAME_BUILD), 기기: navigator.userAgent, botcheck: $('ask-bot').checked };
+    if (mail) { data.email = mail; data.replyto = mail; }
+    fetch('https://api.web3forms.com/submit', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(data) })
+      .then(r => r.json()).then(j => {
+        if (!j || !j.success) throw new Error((j && j.message) || 'fail');
+        $('ask-body').value = ''; btn.textContent = '보냄'; say('문의가 전송됐습니다. 감사합니다!', true);
+      }).catch(() => { btn.disabled = false; btn.textContent = '보내기'; say('전송에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.'); });
   }
   function viewPatch() {
     if (!CT.patches.length) return pageShell('패치노트', '<div class="panel muted small">아직 패치노트가 없다.</div>');
@@ -744,8 +776,9 @@
       </div>
       <div class="home-actions">
         ${sv && !sv.done ? contCard(sv) : ''}
-        <button class="btn ${sv && !sv.done ? '' : 'go'} block" data-act="new">새 인생 시작</button>
+        <button class="btn ${sv && !sv.done ? '' : 'go'} block" data-act="new">커리어모드 시작</button>
         <button class="btn block" data-act="page" data-v="lineup">🧤 골든글러브 라인업</button>
+        ${window.ModesUI ? '<button class="btn block" data-act="x-go" data-v="x-hub">🏟️ 단장모드 시작 <span class="chip red">베타</span></button><button class="btn block" data-act="x-go" data-v="x-vault" data-from="home">🗂️ 선수 보관함</button>' : ''}
         ${App.admin ? `<button class="btn block small ghost" data-act="admin">${App.dev ? '<span class="admin-on">관리자 모드 ON</span> · 끄기' : '관리자 모드 들어가기'}</button>` : ''}
       </div>
       ${App.dev ? '<div class="panel admin-panel small">관리자 모드: 진행 화면에서 내 선수의 잠재능력(PA)·등급·성장/노화 유형·전성기 시기를, 리그 탭 구단 기록에서 선수 OVR을 볼 수 있다.</div>' : ''}
@@ -926,10 +959,27 @@
       <div class="dock"><div class="in"><button class="btn go block" data-act="${pending ? 'next-event' : 'play'}">${goLabel}</button></div></div>`;
   }
   // ---------- 68차: 상점은 없앴고 보유 자금 칸만 남김 — 누르면 투자 ----------
+  // 69차: 보유 자금 칸 — 고교 때부터 · 세 칸 (보유 자금 / 투자 / 특별 관리)
   function cashEntry(st) {
-    if (st.me.stage !== 'pro' || st.done) return '';
-    const S = Sim.shopState(st);
-    return `<button class="shop-entry" data-act="inv-open"><span class="shop-ico">💰</span><span class="shop-t"><b>보유 자금 · 투자</b><span class="tiny">${S.inv.length ? `진행 중인 투자 ${S.inv.length}건` : '채권 · 주식 · 스타트업'}</span></span><span class="shop-cash"><span class="tiny">보유 자금</span><b class="num">${Sim.man(S.cash)}</b></span></button>`;
+    if (st.done) return '';
+    const S = Sim.shopState(st), M = Sim.man, nPk = S.perks.filter(p => p.have).length;
+    return `<div class="cash-grid">
+      <div class="cash-cell"><span class="tiny">💰 보유 자금</span><b class="num">${S.cash ? M(S.cash) : "0원"}</b><span class="tiny muted">${S.salary ? `연봉 ${M(S.salary)}` : '아직 연봉 없음'}</span></div>
+      <button class="cash-cell" data-act="inv-open"><span class="tiny">📈 투자</span><b>${S.inv.length ? `${S.inv.length}건 진행 중` : '채권·주식'}</b><span class="tiny muted">${S.invPL ? `손익 ${S.invPL > 0 ? "+" : "−"}${M(Math.abs(S.invPL))}` : "1~2년 뒤 결과"}</span></button>
+      <button class="cash-cell" data-act="perk-open"><span class="tiny">💊 특별 관리</span><b>${nPk}/${S.perks.length}</b><span class="tiny muted">관절·캡슐 등</span></button>
+    </div>`;
+  }
+  // 69차: 특별 관리 — 커리어에 한 번, 효과는 영구
+  function showPerks(msg) {
+    const S = Sim.shopState(App.st), M = Sim.man;
+    $modal.innerHTML = `<div class="overlay" data-act="inv-close"><div class="sheet shop-sheet">
+      <div class="row"><b style="font-size:17px">💊 특별 관리</b><span class="spacer"></span><span class="small">보유 자금 <b class="num">${M(S.cash)}</b></span></div>
+      ${msg ? `<div class="shop-msg small">${esc(msg)}</div>` : ''}
+      <div class="tiny shop-note"><b>커리어에 한 번</b> <span class="muted">· 받으면 효과는 은퇴할 때까지 · 버튼을 두 번 눌러야 결제된다</span></div>
+      ${S.perks.map(p => `<div class="shop-item ${p.have ? 'on' : ''}"><div class="si-t"><b>${p.have ? '✔ ' : ''}${esc(p.name)}</b><span class="tiny muted">${esc(p.desc)}${p.have ? ` · ${p.year}년 받음` : ''}</span></div>
+        ${p.have ? '<span class="tiny muted">완료</span>' : `<button class="btn small" data-act="perk-buy" data-v="${p.k}" ${S.cash >= p.price ? '' : 'disabled'}>${M(p.price)}</button>`}</div>`).join('')}
+      <button class="btn block" data-act="inv-close" style="margin-top:12px">닫기</button>
+    </div></div>`;
   }
   function showInvest(msg) {
     const S = Sim.shopState(App.st), M = Sim.man;
@@ -1569,6 +1619,7 @@
       ${f.hof && f.hof.in ? `<div class="panel reveal hof-panel"><div class="hof-title">명예의 전당 헌액</div><div class="small">${esc(f.name)}의 이름이 명예의 전당에 새겨졌다.</div><div class="stamps" style="justify-content:center">${f.hof.why.map(w => `<span class="stamp gold">${esc(w)}</span>`).join('')}</div><button class="btn small" data-act="hof-replay" style="margin-top:10px">헌액식 다시 보기</button></div>`
         : `<div class="panel reveal small muted" style="text-align:center">명예의 전당 헌액 기준에는 닿지 못했다.${f.hof && f.hof.why && f.hof.why.length ? `<div style="margin-top:6px">달성한 기준 ${f.hof.why.length}개 · 헌액에는 ${f.hof.need || 2}개 이상 필요</div><div class="stamps" style="justify-content:center">${f.hof.why.map(w => `<span class="stamp">${esc(w)}</span>`).join('')}</div>` : ''}</div>`}
       ${retNumPanel(st)}
+      ${window.ModesUI ? ModesUI.retirePanel(st) : ''}
       <div class="panel reveal" id="share-src">
         <div class="big-score"><span>CAREER SCORE</span><b class="num">${f.score}</b>
           ${pct != null ? `<span class="pct-badge">전체 커리어 대비 상위 ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</span>` : `<span class="tiny muted" id="pct-wait">비교 데이터 만드는 중…</span>`}
@@ -2163,7 +2214,10 @@
     else if (App.view === 'notice') html = viewNotice();
     else if (App.view === 'patch') html = viewPatch();
     else if (App.view === 'lineup') html = viewLineup();
+    else if (/^x-/.test(App.view) && window.ModesUI) html = ModesUI.view(App.view);   // 확장 모드 (modes-ui.js)
+    else { App.view = 'home'; html = viewHome(); }
     $app.innerHTML = html;
+    if (/^x-/.test(App.view) && window.ModesUI) ModesUI.after();
     if (App.view === 'create') afterCreate();
     if (App.view === 'home') { startHero(); drawPodium(); }
     if (App.view === 'lineup') drawPodium();
@@ -2233,6 +2287,8 @@
     if (el) { el.dataset.orig = el.dataset.orig || el.textContent; el.textContent = msg; el.classList.add('armed'); setTimeout(() => { if (App._armed === key) { App._armed = null; el.textContent = el.dataset.orig; el.classList.remove('armed'); } }, 4000); }
     return false;
   }
+  // 확장 모드(modes-ui.js)가 쓰는 공용 도구
+  window.GG = { App, store, $modal, render, save, armed, drawAvatar, TEAMCOLOR, cardData, standingsHTML, recTable, teamRoster, awardsHTML, barsHTML, cardBg };
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-act]');
     if (!el) return;
@@ -2261,6 +2317,9 @@
       // 68차: 투자 (상점에서 투자만 남김)
       case 'inv-open': showInvest(); break;
       case 'inv-close': if (e.target.closest('.sheet') && !e.target.closest('[data-act="inv-close"].btn')) break; $modal.innerHTML = ''; render(); break;
+      // 69차: 특별 관리 (동결건조 캡슐 · 바이오닉 관절 등, 커리어 한 번)
+      case 'perk-open': showPerks(); break;
+      case 'perk-buy': { if (!armed('perk-' + v, el, '한 번 더 누르면 결제')) break; const r = Sim.shopBuy(App.st, v); if (r.ok) save(); showPerks(r.msg); break; }
       case 'inv-buy': {
         const [kind, a] = (el.dataset.arg || '').split(':');
         const r = Sim.shopBuy(App.st, 'invest', { kind, amt: +a }); if (r.ok) save(); showInvest(r.msg); break;
@@ -2306,6 +2365,10 @@
       case 'cardimg': cardImage(); break;
       case 'reccard': showRecCard(v); break;
       case 'notice-close': if (el.classList.contains('notice-overlay') && e.target.closest('.notice-pop')) break; App.noticePop = false; markSeen('notice'); $modal.innerHTML = ''; render(); break;
+      case 'ask-open': askModal(); break;
+      case 'ask-close': if (el.classList.contains('notice-overlay') && e.target.closest('.notice-pop')) break; $modal.innerHTML = ''; break;
+      case 'ask-send': askSend(); break;
+
       case 'notice-all': App.noticePop = false; markSeen('notice'); App.view = 'notice'; render(); window.scrollTo(0, 0); break;
       case 'reccard-save': if (App._recCard) cardImage(App._recCard); break;
       case 'reccard-close': if (el.classList.contains('card-overlay') && e.target.closest('.card-box')) break; $modal.innerHTML = ''; break;
