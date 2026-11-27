@@ -778,7 +778,7 @@
         ${sv && !sv.done ? contCard(sv) : ''}
         <button class="btn ${sv && !sv.done ? '' : 'go'} block" data-act="new">커리어모드 시작</button>
         <button class="btn block" data-act="page" data-v="lineup">🧤 골든글러브 라인업</button>
-        ${window.ModesUI ? '<button class="btn block" data-act="x-go" data-v="x-hub">🏟️ 단장모드 시작 <span class="chip red">베타</span></button><button class="btn block" data-act="x-go" data-v="x-vault" data-from="home">🗂️ 선수 보관함</button>' : ''}
+        ${window.ModesUI ? '<button class="btn block" data-act="x-go" data-v="x-hub">🏟️ 감독모드 시작 <span class="chip red">베타</span></button><button class="btn block" data-act="x-go" data-v="x-vault" data-from="home">🗂️ 선수 보관함</button>' : ''}
         ${App.admin ? `<button class="btn block small ghost" data-act="admin">${App.dev ? '<span class="admin-on">관리자 모드 ON</span> · 끄기' : '관리자 모드 들어가기'}</button>` : ''}
       </div>
       ${App.dev ? '<div class="panel admin-panel small">관리자 모드: 진행 화면에서 내 선수의 잠재능력(PA)·등급·성장/노화 유형·전성기 시기를, 리그 탭 구단 기록에서 선수 OVR을 볼 수 있다.</div>' : ''}

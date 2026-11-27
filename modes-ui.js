@@ -116,7 +116,7 @@ const ModesUI = (function () {
   // ================================================================
   function viewHub() {
     const lg = league('lg');
-    return `${topbar('단장모드')}
+    return `${topbar('감독모드')}
       <div class="panel"><h3>골글 들고 명전으로 확장판</h3><div class="small">원작에서 키운 선수를 <b>보관함</b>에 저장하고, 내 구단 라인업에 넣어 시즌을 치른다. 선수는 원작 프로 시절 가장 높았던 <b>개막 OVR(전성기 OVR)</b>로 고정돼 뛴다.</div></div>
       <button class="btn block x-hub-btn" data-act="x-go" data-v="x-league"><span>🏟️ 리그모드</span><span class="tiny muted">${lg ? `${esc(lg.club.emblem)} ${esc(lg.club.name)} · ${lg.cur.season}시즌` : '내 구단 vs 컴퓨터 9팀 · 144경기'}</span></button>
       <button class="btn block x-hub-btn x-soon" disabled aria-disabled="true"><span>🌐 온라인모드 <span class="chip">예정</span></span><span class="tiny muted">내 구단 vs 유저 9팀 · 준비 중</span></button>

@@ -941,7 +941,10 @@ button.x-news > span:nth-child(2) { text-align: left; }
   .x-tac-key { font-size: 9px; gap: 5px; flex-wrap: wrap; }
 }
 @media (max-width: 440px) {
-  .x-lu .lu-field { aspect-ratio: 1 / 1.28; }
+  .x-lu .lu-field { aspect-ratio: 1 / 1.12; }   /* 69차: 폰에서 세로로 길어 보여 1.28 → 1.12 */
+  .x-lu .lu-cf { top: 9%; } .x-lu .lu-lf, .x-lu .lu-rf { top: 27%; } .x-lu .lu-c, .x-lu .x-lu-dh, .x-lu .x-lu-cl { top: 89%; }
+  .x-lu .lu-slot { gap: 0; }
+  .x-lu .x-bench .lu-slot { width: calc(20% - 4px); }   /* 불펜·후보 5칸을 한 줄에 (경기장 칸 너비 22%가 덮어써 4칸씩 꺾이던 것) */
   .x-lu .lu-slot { width: 22%; padding: 3px 2px 2px; }
   .x-lu .lu-slot .lu-av { width: 24px; height: 24px; }
   .x-lu .lu-name { font-size: 10.5px; } .x-lu .lu-score { font-size: 9.5px; } .x-lu .lu-pos { font-size: 8.5px; }
