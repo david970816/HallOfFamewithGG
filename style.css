@@ -990,3 +990,4 @@ button.cash-cell { cursor: pointer; }
 .cash-cell b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .cash-cell b.num { color: var(--gold); font-size: 15px; }
 .shop-item .btn:disabled { opacity: .4; filter: grayscale(1); }
+.seg.pos9 { flex-wrap: wrap; } .seg.pos9 button { flex: 1 0 calc(20% - 3px); white-space: nowrap; }   /* 69차: 포지션 9개 (지명 추가) → 5개씩 두 줄 */

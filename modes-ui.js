@@ -73,7 +73,15 @@ const ModesUI = (function () {
     on: { key: 'gg_online2', title: '온라인모드', view: 'x-online', others: '유저 9팀', otherOne: '유저 구단' },
   };
   const ST = { lg: undefined, on: undefined };
-  function league(m) { m = m || X.mode; if (ST[m] === undefined) ST[m] = G().store.get(MODE[m].key, null); return ST[m]; }
+  function league(m) {
+    m = m || X.mode;
+    if (ST[m] === undefined) {
+      ST[m] = G().store.get(MODE[m].key, null);
+      // 이도류 카드는 처음 고른 포지션 쪽으로만 — 예전 리그에 이도류로 들어가 있던 선수도 바꾼다
+      if (ST[m] && ST[m].cards) for (const id in ST[m].cards) { const p = ST[m].cards[id]; if (p && p.role === 'TW') p.role = ['SP', 'RP', 'CL'].includes(p.pos) ? 'P' : 'B'; }
+    }
+    return ST[m];
+  }
   function setLeague(v) { ST[X.mode] = v; saveLeague(); }
   function saveLeague() { const m = X.mode, s = ST[m]; if (s) { if (!G().store.set(MODE[m].key, s)) X.msg = '저장 공간이 부족해 저장하지 못했다'; } else G().store.del(MODE[m].key); }
   try { localStorage.removeItem('gg_online'); } catch (e) { }   // 예전 6팀·14슬롯 온라인 베타 저장 (형식이 달라 더 쓰지 않는다)
@@ -183,8 +191,9 @@ const ModesUI = (function () {
   const LU_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'CL'];   // 보관함 내 라인업은 불펜 칸 없이 (경기장 그림의 선발·마무리까지만)
   const LU_KO = Object.assign({}, M.POS_KO, { CL: '마무리' }); LU_BP.forEach((k, i) => { LU_KO[k] = '불펜' + (i + 1); });
   const slotPos = k => /^RP/.test(k) ? 'RP' : k;
-  // 지명타자는 타자라면 누구나(이도류 포함), 선발은 선발·이도류, 나머지는 그 포지션으로 보관한 카드만
-  const canPlay = (c, slot) => slot === 'DH' ? (c.role === 'B' || c.tw) : slotPos(slot) === 'SP' ? (c.pos === 'SP' || c.tw) : c.pos === slotPos(slot);   // 제 포지션만 (지명타자는 타자 누구나)
+  // 지명타자는 타자라면 누구나, 나머지는 그 포지션으로 보관한 카드만. 이도류는 처음 고른 포지션 쪽으로만 (투수로 시작했으면 투수, 타자로 시작했으면 타자)
+  const pitPos = p => p === 'SP' || p === 'RP' || p === 'CL';
+  const canPlay = (c, slot) => slot === 'DH' ? (c.tw ? !pitPos(c.pos) : c.role === 'B') : c.pos === slotPos(slot);
   function myLineup(v) {
     const lu = v.lineup || {}, out = {};
     for (const k of LU_SLOTS) { const c = v.cards.find(x => x.id === lu[k] && canPlay(x, k)); if (c) out[k] = c; }

@@ -806,7 +806,7 @@
   function viewCreate() {
     const c = App.create;
     const keys = c.role === 'P' ? Sim.PIT : Sim.BAT;
-    const posList = c.role === 'P' ? ['SP'] : ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
+    const posList = c.role === 'P' ? ['SP'] : ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
     return `
       <div class="topbar"><button class="btn small" data-act="home">← 홈</button><span class="title">새 인생</span><span class="spacer"></span>${devToggle()}</div>
       <div class="panel" style="margin-top:6px">
@@ -821,7 +821,7 @@
         <label class="f">투수 / 타자</label>
         <div class="seg">${[['B', '타자'], ['P', '투수']].map(([v, t]) => `<button class="${c.role === v ? 'on' : ''}" data-act="cr-role" data-v="${v}">${t}</button>`).join('')}</div>
         <label class="f">포지션</label>
-        ${c.role === 'P' ? '<div class="tiny muted" style="margin-top:2px">고교 시절은 선발로 던진다. 보직(선발·불펜·마무리)은 고교를 졸업할 때 고른다.</div>' : `<div class="seg">${posList.map(p => `<button class="${c.pos === p ? 'on' : ''}" data-act="cr-pos" data-v="${p}">${{ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', LF: '좌익', CF: '중견', RF: '우익', SP: '선발', RP: '불펜', CL: '마무리' }[p]}</button>`).join('')}</div>${/^(LF|CF|RF)$/.test(c.pos) ? '<div class="tiny muted" style="margin-top:4px">좌익수·중견수·우익수는 이름만 다르고 능력치 계산과 기록은 모두 같은 외야수로 친다.</div>' : ''}`}
+        ${c.role === 'P' ? '<div class="tiny muted" style="margin-top:2px">고교 시절은 선발로 던진다. 보직(선발·불펜·마무리)은 고교를 졸업할 때 고른다.</div>' : `<div class="seg pos9">${posList.map(p => `<button class="${c.pos === p ? 'on' : ''}" data-act="cr-pos" data-v="${p}">${{ C: '포수', '1B': '1루', '2B': '2루', '3B': '3루', SS: '유격', OF: '외야', LF: '좌익', CF: '중견', RF: '우익', DH: '지명', SP: '선발', RP: '불펜', CL: '마무리' }[p]}</button>`).join('')}</div>${/^(LF|CF|RF)$/.test(c.pos) ? '<div class="tiny muted" style="margin-top:4px">좌익수·중견수·우익수는 이름만 다르고 능력치 계산과 기록은 모두 같은 외야수로 친다.</div>' : c.pos === 'DH' ? '<div class="tiny muted" style="margin-top:4px">지명타자는 수비를 하지 않고 타격만 한다. 수비 기여가 없어서 같은 성적이라도 WAR가 낮게 나온다.</div>' : ''}`}
         <div class="grid2">
           <div><label class="f">투타</label><select class="t" id="cr-hand">${HANDS.map((h, i) => `<option value="${i}" ${c.hand === i ? 'selected' : ''}>${h[2]}</option>`).join('')}</select></div>
           <div><label class="f">고등학교</label><select class="t" id="cr-hs">${GAME_DATA.eliteSchools.map(s => `<option value="${esc(s.name)}" ${c.hsName === s.name ? 'selected' : ''}>${esc(s.name)} (${GAME_DATA.regions[s.team]})</option>`).join('')}</select></div>

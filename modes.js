@@ -199,7 +199,9 @@ const Modes = (function () {
 
   // 경기용 선수 객체 (보관함 카드 → 고정 능력치 선수)
   function cardPlayer(c) {
-    return { id: 'v:' + c.id, name: c.name, pos: c.pos, role: c.tw ? 'TW' : c.role, r: Object.assign({}, c.r), card: c.id, num: c.num, closer: c.closer, ovr: c.ovr, age: c.primeAge || undefined, filler: c.filler || undefined, bats: c.bats || 'R', throws: c.throws || 'R' };
+    // 이도류 카드는 지금은 처음 고른 포지션 쪽으로만 뛴다 (투수 포지션이면 투수, 아니면 타자). 나중에 둘 다 쓰게 할 예정
+    const role = c.tw ? (['SP', 'RP', 'CL'].includes(c.pos) ? 'P' : 'B') : c.role;
+    return { id: 'v:' + c.id, name: c.name, pos: c.pos, role, r: Object.assign({}, c.r), card: c.id, num: c.num, closer: c.closer, ovr: c.ovr, age: c.primeAge || undefined, filler: c.filler || undefined, bats: c.bats || 'R', throws: c.throws || 'R' };
   }
   const isPitcher = p => p.role === 'P' || p.role === 'TW';
   const isBatter = p => p.role === 'B' || p.role === 'TW';
