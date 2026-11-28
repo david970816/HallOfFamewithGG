@@ -104,7 +104,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
       // 역대급 타자·투수 각 100판에서 최상위권 WAR:업적 ≈ 60:40 이 되도록 맞춘 배율 (POY는 투수가 상위권을 독식하지 않게 35)
       achK: 0.48,
     },
-    relief: { clHLD: 0.04, suSV: 0.03, mrSV: 0.005, mrHLD: 0.1, lrHLD: 0.05 },   // 43차: 보직별 세이브·홀드 섞임 (팀 승수 × 구간 비율 × 계수)
+    relief: { clHLD: 0.04, suSV: 0.03, mrSV: 0.005, mrHLD: 0.2, lrHLD: 0.08, suHLD: 0.42 },   // 72차: 필승조 홀드 0.35 → 0.42 (한 시즌 필승조면 30홀드 안팎), 추격조 0.1 → 0.2, 롱릴리프 0.05 → 0.08   // 43차: 보직별 세이브·홀드 섞임 (팀 승수 × 구간 비율 × 계수)
     closerBias: 8, roleOffer: { toSP: 0.5, toRP: 0.45, toCL: 0.5, spN: [2, 3], gap: 2, spSta: 45, spGap: 3, clGap: 2, clEra: 0.5, clVal: 2 },
     // 13차: 포스팅(svc 이상·병역 해결이면 언제든 신청), 해외 FA(faSvc 이상), 고교 미국 직행(usDirect)
     // 21차: 응찰 기준은 '평가값'(현재 OVR 60% + 잠재력 40%, 내부값)으로. mlbEval/npbEval, 가중 WAR mlbWar/npbWar (내부 눈금)
@@ -184,6 +184,14 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   function posName(me) { return me.pos === 'OF' && me.ofPos ? POSNAME[me.ofPos] : POSNAME[me.pos]; }
   const X = [20, 50, 80, 99];
   // 99를 넘는 값(내 역대급 선수의 전성기·컨디션)은 80~99 구간 기울기 그대로 연장. 다른 선수는 99가 상한이라 영향 없음
+  // 72차: 도루 시도 (600타석당) — 화면 주루 기준 곡선. 주루 88~90이면 주전 한 시즌 40도루 안팎, 93~96이면 60도루 넘게, 99를 넘는 역대급은 80개 안팎
+  const SB_ATT = [[28, 0], [65, 5], [84, 33], [88, 42], [90, 46], [93, 62], [96, 66], [99, 74]];
+  function sbAttOf(v) {
+    const d = dispRaw(v);
+    if (d <= SB_ATT[0][0]) return 0;
+    for (let i = 1; i < SB_ATT.length; i++) if (d <= SB_ATT[i][0]) { const [x0, y0] = SB_ATT[i - 1], [x1, y1] = SB_ATT[i]; return y0 + (y1 - y0) * (d - x0) / (x1 - x0); }
+    return 74 + (d - 99) * 4;   // 99를 넘는 역대급 주루 (이종범급)
+  }
   function L(v, ys) {
     v = clamp(v, 20, BAL.overCap);
     for (let i = 0; i < 3; i++) if (v <= X[i + 1]) return ys[i] + (ys[i + 1] - ys[i]) * (v - X[i]) / (X[i + 1] - X[i]);
@@ -191,7 +199,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   }
   const T = {
     kB: [.33, .186, .10, .06], babip: [.280, .327, .370, .400], bb: [.04, .096, .145, .19], hr: [.002, .025, .06, .09], xbh: [.12, .21, .30, .36],
-    sbA: [0, 6, 40, 70], sbS: [.60, .70, .85, .92], babSpd: [-.010, 0, .015, .025], defR: [-16, 0, 12, 20], armR: [-6, 0, 5, 9],
+    sbA: [0, 6, 40, 70], sbS: [.60, .70, .85, .92],   // sbA는 72차부터 sbAttOf(화면 주루 기준)로 계산 (아래)
+    babSpd: [-.010, 0, .015, .025], defR: [-16, 0, 12, 20], armR: [-6, 0, 5, 9],
     kP: [.12, .203, .30, .37], bbP: [.14, .081, .04, .025], hrP: [.038, .022, .011, .006], babP: [.355, .300, .260, .240], ipS: [4.0, 5.2, 7.1, 9.0],   // 64차: 선발 평균 이닝 5.4/6.5/7.2 → 5.2/7.1/9
     men: [1.10, 1.00, 0.95, 0.92], velo: [130, 143, 151, 157],
   };
@@ -214,7 +223,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     return {
       bb: Math.min(.26, L(g('eye'), T.bb)), k: Math.max(.035, L(g('con'), T.kB)), hr: Math.min(.13, L(g('pow'), T.hr)),
       babip: Math.min(.43, L(g('con'), T.babip) + L(spd, T.babSpd)),
-      xbh: Math.min(.42, L(g('pow'), T.xbh)), t3: 0.08 * (0.4 + Math.min(99, spd) / 83), sbA: L(spd, T.sbA), sbS: Math.min(.95, L(spd, T.sbS)),
+      xbh: Math.min(.42, L(g('pow'), T.xbh)), t3: 0.08 * (0.4 + Math.min(99, spd) / 83), sbA: sbAttOf(spd), sbS: Math.min(.95, L(spd, T.sbS)),
     };
   }
   function pitRates(r, bonus) {
@@ -262,7 +271,8 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
   function finishBat(s, p, sbForm, rm, bm) {
     s.AB = s.PA - s.BB;
     const ob = OBP(s) / 0.348;
-    const att = p.sbA * s.PA / 600 * (sbForm || 1) * ob;
+    let att = p.sbA * s.PA / 600 * (sbForm || 1) * ob;
+    if (att > 70) att = 70 + (att - 70) * 0.35;   // 72차: 한 시즌 도루 시도가 아주 많아지면 완만하게 (역대급도 80도루 안팎, KBO 최다 84)
     const a = Math.round(att * R.range(0.8, 1.2));
     s.SB = 0; for (let i = 0; i < a; i++) if (R() < p.sbS) s.SB++;
     s.CS = a - s.SB;
@@ -1200,7 +1210,7 @@ releaseNoFirst: 3, starterSegs: 3, devGap: 6,
     //   (예전엔 마무리→필승조로 바뀌어도 필승조가 아닌 추격조로 밀리면 홀드가 0이었다)
     const H = BAL.relief, mr = acc.mr || 0, lr = acc.lr || 0;
     const sv = wins * ((acc.cl || 0) / 3 * 0.42 * trustCL + (acc.su || 0) / 3 * H.suSV + (mr + lr) / 3 * H.mrSV);
-    const hld = wins * ((acc.cl || 0) / 3 * H.clHLD + (acc.su || 0) / 3 * 0.35 + mr / 3 * H.mrHLD + lr / 3 * H.lrHLD);
+    const hld = wins * ((acc.cl || 0) / 3 * H.clHLD + (acc.su || 0) / 3 * H.suHLD + mr / 3 * H.mrHLD + lr / 3 * H.lrHLD);
     s.SV = Math.round(sv * (1 - blown) * R.range(0.9, 1.08));
     s.HLD = Math.round(hld * (1 - blown) * R.range(0.85, 1.15));
   }

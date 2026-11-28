@@ -19,7 +19,7 @@ const Modes = (function () {
     relOuts: { CL: 3, SU: 3, MR: 6, LR: 9 },   // 구원 투수 한 번 등판 최대 아웃
     relRunsPull: 3,             // 구원이 한 번 등판에서 이만큼 실점하면 교체
     defK: 0.0016,               // 팀 수비 점수 1당 인플레이 안타 확률 변화
-    sbK: 5.5,                   // 도루 시도: 1루 주자가 타석마다 (원작 600타석당 시도 수 / 600) × sbK 확률로 뛴다
+    sbK: 4.6,                   // 72차: 5.5 → 4.6 (도루 시도 곡선을 올려서) · 도루 시도: 1루 주자가 타석마다 (원작 600타석당 시도 수 / 600) × sbK 확률로 뛴다
     // 타자·투수 맞대결 보정: 원작은 타자·투수를 따로 계산해서, 맞대결로 곱하면 공격이 조금 세진다 → 리그 평균을 KBO 수준으로
     tune: { bb: 0.93, k: 1.04, hr: 0.8, babip: 0.955 },
     // 자기 포지션이 아닌 곳을 맡을 때 감점 (내부 눈금). 같은 내야끼리는 절반
@@ -330,7 +330,7 @@ const Modes = (function () {
       const tryRole = (role, list) => { for (const p of list) if (ok(p)) return { p, role }; return null; };
       let c = null;
       if (inn >= 9 && lead >= 1 && lead <= 3) c = tryRole('CL', [s.pen.CL]);
-      if (!c && inn >= 7 && lead >= 0 && lead <= 3) c = tryRole('SU', s.pen.SU || []);
+      if (!c && ((inn >= 7 && lead >= 0 && lead <= 4) || (inn >= 6 && lead >= 1 && lead <= 3))) c = tryRole('SU', s.pen.SU || []);   // 72차: 필승조를 앞선 6회 · 4점 차까지도 (홀드왕 30개 안팎)
       if (!c) c = tryRole('MR', s.pen.MR || []);
       if (!c && inn >= 9 && lead >= 0) c = tryRole('CL', [s.pen.CL]);
       if (!c) c = tryRole('SU', s.pen.SU || []);
@@ -507,7 +507,7 @@ const Modes = (function () {
       }
       for (let t = 0; t < 2; t++) for (const x of pit[t]) {
         if (x.start || dec[t].has(x) || x === pit[t][pit[t].length - 1]) continue;
-        if (x.entryLead >= 1 && x.entryLead <= 3 && x.exitLead != null && x.exitLead >= 1 && x.line.outs > 0) dec[t].set(x, 'H');
+        if (x.entryLead >= 1 && x.entryLead <= 4 && x.exitLead != null && x.exitLead >= 1 && x.line.outs > 0) dec[t].set(x, 'H');
       }
       const box = {
         id, a: away.tid, h: home.tid, sc: score.slice(), ln: line, inn: Math.max(line[0].length, line[1].length), win: winner < 0 ? null : sides[winner].tid,
