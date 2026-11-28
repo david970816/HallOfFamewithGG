@@ -797,6 +797,7 @@ const Modes = (function () {
     const off = x => { const b = bRates(byId[x.id]); return b.bb * 1.4 + (1 - b.k) * b.babip * 1.1 + b.hr * 2.5; };
     const ranked = nine.slice().sort((a, b) => off(b) - off(a));
     const bat = [ranked[1], ranked[3], ranked[0], ranked[2], ranked[4], ranked[5], ranked[6], ranked[7], ranked[8]].filter(Boolean);
+    for (const s of BAT_POS) if (!field[s]) bat.push({ id: null, slot: s });   // 72차: 그 포지션 선수가 없어도 타순은 늘 9칸 (빈 칸은 경기 때 대신 나갈 선수로 메운다)
     const pick = (slot, n) => pool.filter(p => fitsSlot(p, slot) && !pTaken.has(p.id)).sort((a, b) => S.ovrAt(b.r, slot === 'SP' ? 'SP' : 'RP') - S.ovrAt(a.r, slot === 'SP' ? 'SP' : 'RP')).slice(0, n).map(p => (pTaken.add(p.id), p.id));
     const pTaken = new Set();
     const sp = pick('SP', 5), cl = pick('CL', 1), rp = pick('RP', nRP || 6);
@@ -843,6 +844,7 @@ const Modes = (function () {
   // 빈 칸 채우기 (경기 시작 때): 비어 있는 자리는 그 포지션의 남는 선수 중 가장 좋은 선수로 (불펜은 선수가 모자라면 빈 채로)
   function fillEmpty(lg) {
     const lu = lg.lineup; if (!lu) return false;
+    for (const s of BAT_POS) if (!lu.bat.some(b => b.slot === s)) lu.bat.push({ id: null, slot: s });   // 72차: 타순이 9칸보다 적게 저장된 리그 바로잡기
     const used = new Set([].concat(lu.bat.map(b => b.id), lu.sp, [lu.CL], lu.SU || [], lu.MR || []).filter(Boolean));
     let changed = false;
     const pool = myPool(lg);
@@ -957,23 +959,25 @@ const Modes = (function () {
   const limited = lg => modeKey(lg) === 'on';
   const cardUsable = (c, lg) => c.filler || ((!limited(lg) || livesLeft(c) > 0) && !(c.rest && c.rest[modeKey(lg)]));
   function ageKeys(p) { return p.role === 'TW' ? S.ALL : S.mainKeys({ role: isPitcher(p) ? 'P' : 'B' }); }
-  // 70차: 리그에 넣을 때 고른 나이부터 새로 시뮬레이션 — 카드와 같은 건 최고 OVR(능력치 상한)뿐.
-  //   시작 능력치는 어릴수록 낮고(28세 기준 1살에 1.5, 성장 유형·운에 따라 조금씩), 해마다 출전량만큼 자란다.
-  //   노화 시작 나이는 노화 유형 기준으로 생활마다 다르게 굴린다 (혜성형·반짝 각성형은 일찍 크게)
-  MB.age.fullAge = 28;
+  // 72차: 리그에 넣을 때 고른 나이부터 새로 시뮬레이션 — 카드와 같은 건 최고 OVR(능력치 상한).
+  //   성장: 원작 전성기 나이(계산에만 쓴다, 26~30세)에 맞춰 남은 차이를 나눠 채운다 → 주전으로 꾸준히 뛰면 그 나이 전후로 최고 OVR에 닿는다.
+  //         출전량(0.5~1.25배)·성장 유형(조숙형은 어릴 때, 대기만성형은 늦게)·운이 섞이고, 상한에 가까워지면 완만하게. 거의 못 뛰면 못 닿을 수도 있다.
+  //   노화: 원래 노화 시작 나이(노화 유형으로 굴림)와 '최고 OVR 도달 + 4년' 중 이른 쪽. 단 원작 전성기 나이보다 먼저 늙지는 않는다.
+  MB.age.fullAge = 28; MB.age.maxDef = 8; MB.age.reachHold = 4;
   function agingStartRoll(p, R) {
     if (p.aging === 'meteor' || p.aging === 'flash') return 27 + Math.floor(R() * 4);
     const ag = S.BAL.aging[p.aging] || S.BAL.aging.std;
     return ag[0] - 2 + Math.floor(R() * 4);   // 표준형 32세 → 30~33세
   }
   function newLife(p, c, startAge) {
-    const age = startAgeOf(c, startAge), life = usesOf(c) + 1 + (c.bank || []).length;
+    const age = startAgeOf(c, startAge), life = usesOf(c) + 1 + (c.bank || []).length, pa = primeAgeOf(c);
     const R = makeRng(hash(`life|${c.id}|${life}|${age}`));
-    p.age = age; p.baseR = Object.assign({}, c.r); p.life = usesOf(c) + 1; p.aging = c.aging || 'std'; p.growth = c.growth || 'std';
-    const n = Math.max(0, MB.age.fullAge - age), tk = p.growth === 'early' ? 0.85 : p.growth === 'late' ? 1.15 : 1;
+    p.age = age; p.pa = pa; p.baseR = Object.assign({}, c.r); p.life = usesOf(c) + 1; p.aging = c.aging || 'std'; p.growth = c.growth || 'std';
+    const n = Math.min(MB.age.maxDef, Math.max(0, pa - age)), tk = p.growth === 'early' ? 0.85 : p.growth === 'late' ? 1.15 : 1;
     if (n > 0) for (const k of ageKeys(p)) p.r[k] = Math.max(20, Math.round((c.r[k] - MB.age.grow * n * tk * (0.9 + R() * 0.2)) * 10) / 10);
-    p.agStart = Math.max(age + 1, agingStartRoll(p, R)); p.pa = p.agStart - 1;
+    p.agNat = Math.max(pa + 1, age + 1, agingStartRoll(p, R)); p.reachAge = null;
     p.ovr = dispOvr(p.r, p.pos);
+    p.agStart = agStartOf(p);
     return p;
   }
   // 예전 리그에 이미 들어 있던 카드: 지금 능력치 그대로
@@ -986,27 +990,41 @@ const Modes = (function () {
     const share = Math.max(sh(s.b, s.p), MB.fut.w * Math.min(1, sh(s.fb, s.fp)));   // 퓨처스(2군) 출전은 90%로 친다
     return Math.round((0.5 + 0.75 * Math.min(1, share)) * 100) / 100;
   }
-  // 예전 방식으로 들어온 카드: 노화 시작 나이를 예전 규칙(전성기 + 유지)으로 정해 둔다
+  const reached = p => ageKeys(p).every(k => p.r[k] >= p.baseR[k] - 0.05);
+  // 노화 시작 나이 (그때그때 계산: 최고 OVR에 닿으면 당겨질 수 있다)
   function agStartOf(p) {
-    if (p.agStart == null) { const crash = p.aging === 'meteor' || p.aging === 'flash', ag = S.BAL.aging[p.aging] || S.BAL.aging.std; p.agStart = crash ? p.pa + 1 : Math.max(ag[0], p.pa + 1 + MB.age.hold); }
-    return p.agStart;
+    if (p.agNat == null) {   // 예전 방식으로 들어온 카드
+      if (p.agStart != null) p.agNat = p.agStart;
+      else { const crash = p.aging === 'meteor' || p.aging === 'flash', ag = S.BAL.aging[p.aging] || S.BAL.aging.std; p.agNat = crash ? p.pa + 1 : Math.max(ag[0], p.pa + 1 + MB.age.hold); }
+    }
+    return p.reachAge != null ? Math.max(p.pa + 1, Math.min(p.agNat, p.reachAge + MB.age.reachHold)) : p.agNat;
   }
   // 한 해 나이 먹기 (새 시즌 시작 때). 반환: 은퇴하면 true
   function ageOne(lg, p) {
     const R = makeRng(hash(`${lg.seed}|age|${lg.season}|${p.id}`));
     p.age++;
     const keys = ageKeys(p), start = agStartOf(p);
-    if (p.age < start) {   // 성장: 최고 능력치(카드)까지 남은 차이의 일부만큼. 많이 뛸수록, 성장 유형에 맞는 나이일수록 많이 큰다 (해마다 운도 섞인다)
-      const f = playF(lg, p), g = p.growth || 'std', a = p.age;
-      const rate = (g === 'early' ? (a <= 23 ? 0.42 : 0.22) : g === 'late' ? (a <= 24 ? 0.18 : 0.38) : 0.28) * f * (0.75 + R() * 0.5);
-      for (const k of keys) { const gap = p.baseR[k] - p.r[k]; if (gap <= 0) continue; const step = Math.max(gap * rate, Math.min(gap, 0.4 * f)); p.r[k] = Math.round(Math.min(p.baseR[k], p.r[k] + step) * 10) / 10; }
-      p.lastF = f;
+    if (p.age < start) {
+      if (!reached(p)) {   // 성장
+        const f = playF(lg, p), g = p.growth || 'std', a = p.age, left = Math.max(1, p.pa - a + 1);
+        const tk = g === 'early' ? (a <= 23 ? 1.3 : 0.8) : g === 'late' ? (a <= 24 ? 0.75 : 1.3) : 1;
+        for (const k of keys) {
+          const gap = p.baseR[k] - p.r[k]; if (gap <= 0) continue;
+          let step = (a > p.pa ? gap * 0.5 : gap / left) * f * tk * (0.85 + R() * 0.3);
+          if (gap < 2.4) step *= 0.6;   // 상한 가까이에서는 완만하게 (화면 OVR 3쯤)
+          step = Math.max(step, Math.min(gap, 0.3 * f));
+          p.r[k] = Math.round(Math.min(p.baseR[k], p.r[k] + step) * 10) / 10;
+        }
+        p.lastF = f;
+      }
+      if (p.reachAge == null && reached(p)) p.reachAge = p.age;
     } else {   // 노화: 원작 규칙 (유형별 폭, 능력치별 늦게 시작, 해마다 가속). 혜성형·반짝 각성형은 크게
       const BAL = S.BAL, crash = p.aging === 'meteor' && BAL.meteor ? BAL.meteor.decline : p.aging === 'flash' && BAL.awaken ? BAL.awaken.flashDecline : null;
       const ag = crash ? [start].concat(crash) : BAL.aging[p.aging] || BAL.aging.std;
       const y = p.age - start, off = isPitcher(p) ? { vel: 0, sta: 0, stf: 1, brk: 1, men: 2, ctl: 2, spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 } : { spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 };
       for (const k of keys) { if (y < (off[k] || 0)) continue; const d = (ag[1] + Math.floor(R() * (ag[2] - ag[1] + 1))) * (1 + BAL.agingAccel * y) * MB.age.speed; p.r[k] = Math.max(20, Math.round((p.r[k] - d) * 10) / 10); }
     }
+    p.agStart = agStartOf(p);
     p.ovr = dispOvr(p.r, p.pos);
     rateCache.delete(p);   // 능력치가 바뀌었으니 경기용 비율 다시 계산
     const prime = dispOvr(p.baseR, p.pos);
