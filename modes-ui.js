@@ -980,7 +980,8 @@ const ModesUI = (function () {
     const inLu = luSet(lg), role = luRoleMap(lg);
     const grp = p => M.isPitcher(p) && p.role !== 'TW' ? (p.pos === 'SP' ? 2 : 3) : 1;
     const order = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
-    const sorter = (a, b) => grp(a) - grp(b) || (inLu.has(b.id) - inLu.has(a.id)) || (grp(a) === 1 ? order.indexOf(a.pos) - order.indexOf(b.pos) : 0) || (b.ovr || M.dispOvr(b.r, b.pos)) - (a.ovr || M.dispOvr(a.r, a.pos));
+    const oi = p => { const i = order.indexOf(p.pos); return i < 0 ? 99 : i; };
+    const sorter = (a, b) => grp(a) - grp(b) || (grp(a) === 1 ? oi(a) - oi(b) : 0) || (inLu.has(b.id) - inLu.has(a.id)) ||(b.ovr || M.dispOvr(b.r, b.pos)) - (a.ovr || M.dispOvr(a.r, a.pos));
     const own = (lg.own || []).map(id => lg.players[id]).filter(Boolean), cards = Object.keys(lg.cards).map(id => M.lgPlayer(lg, id)).filter(Boolean);
     const all = own.concat(cards), fresh = M.freshCards(lg, vault());
     const farmOn = M.farmOn(lg), F = lg.cur.fut;
