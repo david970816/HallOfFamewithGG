@@ -55,6 +55,13 @@ const ModesUI = (function () {
   function vault() {
     let v = G().store.get(KEY_V, null);
     if (!v || !Array.isArray(v.cards)) v = { cards: [] };
+    // 70차: 생성 선수 카드는 보관함에서 뺀다 (내 구단은 원래 구단 선수로 시작) · 보관함에서 고르던 시작 나이(age0)는 없앤다
+    if (!v.v70) {
+      v.cards = v.cards.filter(c => !c.filler);
+      for (const c of v.cards) delete c.age0;
+      if (v.lineup) for (const k in v.lineup) if (!v.cards.some(c => c.id === v.lineup[k])) delete v.lineup[k];
+      v.v70 = 1; G().store.set(KEY_V, v);
+    }
     // 마무리 포지션이 생기기 전 저장한 카드: 원작에서 마무리였던 불펜 카드를 마무리 칸으로 (3명까지)
     if (!v.clMig) {
       for (const c of v.cards) if (c.pos === 'RP' && c.closer && v.cards.filter(x => x.pos === 'CL').length < M.capOf('CL')) c.pos = 'CL';
@@ -98,7 +105,7 @@ const ModesUI = (function () {
     o = o || {};
     return `<button class="x-card ${o.sel ? 'sel' : ''} ${c.filler ? 'x-filler' : ''}" data-act="${o.act || 'x-card'}" data-v="${esc(c.id)}" style="--team:${esc(c.color || '#3d4a5c')}">
       ${av(c)}<span class="x-card-t"><b>${esc(c.name)}</b><span class="tiny">${esc(M.POS_KO[c.pos] || c.pos)}${c.tw ? ' · 이도류' : ''}${c.filler ? ' · 생성 선수' : ''}</span></span>
-      <span class="x-card-ovr"><b class="num">${c.ovr}</b><i>${c.filler ? '생성' : '전성기'}</i></span>${c.filler || o.noLife ? '' : lifeBadge(c)}</button>`;
+      <span class="x-card-ovr"><b class="num">${c.ovr}</b><i>${c.filler ? '생성' : '최고'}</i></span>${c.filler || o.noLife ? '' : lifeBadge(c)}</button>`;
   }
   function tabs(key, list) { return `<div class="tabs">${list.map(([k, t]) => `<button class="${X[key] === k ? 'on' : ''}" data-act="x-tab" data-k="${key}" data-v="${k}">${t}</button>`).join('')}</div>`; }
   function msgBox() { if (!X.msg) return ''; const m = X.msg; X.msg = ''; return `<div class="panel x-msg small">${esc(m)}</div>`; }
@@ -117,7 +124,7 @@ const ModesUI = (function () {
   function viewHub() {
     const lg = league('lg');
     return `${topbar('감독모드')}
-      <div class="panel"><h3>골글 들고 명전으로 확장판</h3><div class="small">원작에서 키운 선수를 <b>보관함</b>에 저장하고, 내 구단 라인업에 넣어 시즌을 치른다. 선수는 원작 프로 시절 가장 높았던 <b>개막 OVR(전성기 OVR)</b>로 고정돼 뛴다.</div></div>
+      <div class="panel"><h3>골글 들고 명전으로 확장판</h3><div class="small">원작에서 키운 선수를 <b>보관함</b>에 저장하고, 내 구단 라인업에 넣어 시즌을 치른다. 선수는 원작 프로 시절 가장 높았던 <b>최고 OVR</b>을 기준으로 뛴다. 리그에 넣을 때 고른 나이부터 자라고 늙는다.</div></div>
       <button class="btn block x-hub-btn" data-act="x-go" data-v="x-league"><span>🏟️ 리그모드</span><span class="tiny muted">${lg ? `${esc(lg.club.emblem)} ${esc(lg.club.name)} · ${lg.cur.season}시즌` : '내 구단 vs 컴퓨터 9팀 · 144경기'}</span></button>
       <button class="btn block x-hub-btn x-soon" disabled aria-disabled="true"><span>🌐 온라인모드 <span class="chip">예정</span></span><span class="tiny muted">내 구단 vs 유저 9팀 · 준비 중</span></button>
       <div class="panel small muted">베타 버전이다. 기록은 이 브라우저에만 저장된다. 선수 보관함은 홈 화면에서 연다.</div>`;
@@ -214,7 +221,7 @@ const ModesUI = (function () {
     };
     const ovrs = Object.values(L).map(c => c.ovr), avg = ovrs.length ? Math.round(ovrs.reduce((a, b) => a + b, 0) / ovrs.length) : 0;
     return `<div class="panel lu-panel x-lu">
-      <div class="row" style="align-items:center;margin-bottom:8px"><b>내 라인업</b><span class="tiny muted" style="margin-left:6px">${n}/${LU_SLOTS.length}${n ? ` · 평균 전성기 OVR ${avg}` : ''}</span><span class="spacer"></span>
+      <div class="row" style="align-items:center;margin-bottom:8px"><b>내 라인업</b><span class="tiny muted" style="margin-left:6px">${n}/${LU_SLOTS.length}${n ? ` · 평균 최고 OVR ${avg}` : ''}</span><span class="spacer"></span>
         <button class="btn small" data-act="x-lu-auto">자동 편성</button>${n ? '<button class="btn small" data-act="x-lu-clear" style="margin-left:4px">비우기</button>' : ''}</div>
       ${fieldHTML(get, [])}
       <div class="tiny muted" style="margin-top:8px;text-align:center">자리를 누르면 그 포지션에 보관한 선수 중에서 고른다 · <b>+</b> 고를 선수 있음 · <b>?</b> 보관한 선수 없음</div></div>`;
@@ -241,7 +248,7 @@ const ModesUI = (function () {
     return `${topbar('선수 보관함', X.vaultHome ? '' : 'x-hub')}${msgBox()}
       <button class="btn block x-hof-btn" data-act="x-hof">🏛 명예의 전당 <span class="tiny">${(v.hof || []).length}/${M.MB.age.hof}</span></button>
       ${luField(v)}
-      <div class="panel small">원작에서 은퇴한 선수를 <b>은퇴 결산 화면의 '보관함에 저장'</b>으로 넣는다. 주 포지션 슬롯에 저장되고 포지션마다 ${M.MB.vaultPerPos}명까지(선발 6 · 불펜 7 · 마무리 2). 선수가 없는 포지션은 생성 선수(모든 능력치 65)가 슬롯을 채운다 — 불펜은 3명, 선발은 5명이 될 때까지. 카드를 누르면 상세·삭제.</div>
+      <div class="panel small">원작에서 은퇴한 선수를 <b>은퇴 결산 화면의 '보관함에 저장'</b>으로 넣는다. 주 포지션 슬롯에 저장되고 포지션마다 ${M.MB.vaultPerPos}명까지(선발 6 · 불펜 7 · 마무리 2). 리그모드 라인업에 넣을 때 시작 나이(20~30세)를 고른다. 카드를 누르면 상세·삭제.</div>
       ${LOCAL ? `<div class="panel small"><b>개발용</b> (내 컴퓨터에서만 보임) — 봇이 원작 커리어를 자동으로 끝까지 돌려 카드를 만든다.<div class="row wrap" style="gap:6px;margin-top:8px">${M.VAULT_POS.map(p => `<button class="btn small" data-act="x-devcard" data-v="${p}">+ ${M.POS_KO[p]}</button>`).join('')}<button class="btn small" data-act="x-devcard" data-v="TW">+ 이도류</button></div></div>` : ''}
       <div class="panel">${rows}</div>`;
   }
@@ -269,7 +276,7 @@ const ModesUI = (function () {
       <div class="small">🏟️ 리그모드: <b>횟수 제한 없이</b> 다시 쓸 수 있다</div>
       <div class="x-lives" style="margin-top:3px"><span class="small">🌐 온라인 사용 ${used}/${lives}</span>${Array.from({ length: lives }, (_, i) => `<i class="${i < used ? 'used' : ''}"></i>`).join('')}<span class="small">${left ? `${left}번 남음` : '<b>모두 씀</b> — 온라인 라인업엔 못 넣는다'}</span></div>
       ${now.length ? `<div class="small" style="margin-top:4px">${now.join(' · ')}</div>` : ''}
-      ${ageRow(c, null, 'x-card-age', c.id)}<div class="tiny muted">시작 나이는 다음 생활부터 적용된다 (지금 뛰고 있으면 그대로).</div>
+      <div class="tiny muted">시작 나이는 리그모드 라인업에 처음 넣을 때 고른다 (20~30세, 은퇴 전에는 못 바꾼다).</div>
       <div class="row wrap" style="gap:6px;margin-top:8px">${rest.lg || (rest.on && left) ? `<button class="btn small go" data-act="x-card-reuse" data-v="${esc(c.id)}" style="flex:1">🔄 다시 쓰기</button>` : ''}
         <button class="btn small" data-act="x-hof-add" data-v="${esc(c.id)}" style="flex:1" ${hof >= M.MB.age.hof ? 'disabled' : ''}>🏛 명예의 전당에 올리기 (${hof}/${M.MB.age.hof})</button></div>
       <div class="tiny muted" style="margin-top:4px">명예의 전당에 올리면 보관함에서 빠지고(슬롯이 빈다) 원작 카드와 리그·온라인 통산 기록이 함께 남는다.</div>`;
@@ -280,7 +287,7 @@ const ModesUI = (function () {
     const H = vault().hof || [];
     sheet(`<h3>🏛 명예의 전당 <span class="tiny muted">${H.length}/${M.MB.age.hof}</span></h3>
       <div class="small muted" style="margin-bottom:8px">보관함 카드 중 고른 선수를 올린다. 원작 카드와 리그·온라인에서 쌓은 통산 기록이 함께 남는다. 10명까지.</div>
-      ${H.length ? `<div class="x-vgrid col">${H.map((e, i) => { const t = M.hofTotals(e.card); return `<button class="x-card x-hof-card" data-act="x-hof-card" data-v="${i}" style="--team:${esc(e.card.color || '#3d4a5c')}">${av(e.card)}<span class="x-card-t"><b>${esc(e.card.name)}</b><span class="tiny">${esc(M.POS_KO[e.card.pos] || e.card.pos)} · 모드 ${t.seasons}시즌${t.champ ? ` · 🏆${t.champ}` : ''}</span></span><span class="x-card-ovr"><b class="num">${e.card.ovr}</b><i>전성기</i></span></button>`; }).join('')}</div>` : '<div class="small muted">아직 아무도 없다. 보관함에서 카드를 눌러 \'명예의 전당에 올리기\'.</div>'}
+      ${H.length ? `<div class="x-vgrid col">${H.map((e, i) => { const t = M.hofTotals(e.card); return `<button class="x-card x-hof-card" data-act="x-hof-card" data-v="${i}" style="--team:${esc(e.card.color || '#3d4a5c')}">${av(e.card)}<span class="x-card-t"><b>${esc(e.card.name)}</b><span class="tiny">${esc(M.POS_KO[e.card.pos] || e.card.pos)} · 모드 ${t.seasons}시즌${t.champ ? ` · 🏆${t.champ}` : ''}</span></span><span class="x-card-ovr"><b class="num">${e.card.ovr}</b><i>최고</i></span></button>`; }).join('')}</div>` : '<div class="small muted">아직 아무도 없다. 보관함에서 카드를 눌러 \'명예의 전당에 올리기\'.</div>'}
       ${(vault().mgrs || []).length ? `<h4 class="x-h4">👔 역대 감독</h4>${vault().mgrs.slice().reverse().map(m => `<div class="x-mgr-row small"><b>${esc(m.club)}</b> <span class="muted">${m.from}~${m.to} · ${m.seasons}시즌${m.mode === 'on' ? ' · 온라인' : ''}</span><span class="spacer"></span><span>${m.w}승 ${m.l}패${m.champ ? ` · 🏆${m.champ}` : ''}</span></div>`).join('')}` : ''}
       <button class="btn small block" data-act="x-close-btn" style="margin-top:12px">닫기</button>`);
   }
@@ -294,7 +301,7 @@ const ModesUI = (function () {
   function hofCard(i) {
     const e = (vault().hof || [])[+i]; if (!e) return;
     const c = e.card, t = M.hofTotals(c), keys = c.role === 'P' ? Sim.PIT : Sim.BAT;
-    sheet(`${cardFace({ name: c.name, num: c.num, color: c.color, av: +c.avatar || 1, ovr: c.ovr, ovrLbl: '전성기 OVR', sub: `${M.POS_KO[c.pos]}${c.tw ? ' · 이도류' : ''}${c.team ? ' · 원작 ' + c.team : ''}`, emblem: (c.team || '⚾').slice(0, 2), r: c.r, keys, hof: true, foot: `🏛 헌액 · ${cardFoot(c)}` })}
+    sheet(`${cardFace({ name: c.name, num: c.num, color: c.color, av: +c.avatar || 1, ovr: c.ovr, ovrLbl: '최고 OVR', sub: `${M.POS_KO[c.pos]}${c.tw ? ' · 이도류' : ''}${c.team ? ' · 원작 ' + c.team : ''}`, emblem: (c.team || '⚾').slice(0, 2), r: c.r, keys, hof: true, foot: `🏛 헌액 · ${cardFoot(c)}` })}
       <h4 class="x-h4">원작 커리어</h4><div class="small">통산 WAR <b>${c.career.war}</b> · ${c.career.seasons}시즌 · ${c.career.retireAge}세 은퇴${c.career.hof ? ' · <b>원작 명예의 전당</b>' : ''}</div>
       ${c.career.aw && c.career.aw.length ? `<div class="stamps sm">${c.career.aw.map(a => `<span class="stamp ${/MVP|우승|골든/.test(a) ? 'gold' : ''}">${esc(a)}</span>`).join('')}</div>` : ''}
       <h4 class="x-h4">리그·온라인 통산 <span class="tiny muted">${t.seasons}시즌 · 생활 ${t.lives}번</span></h4>
@@ -305,7 +312,7 @@ const ModesUI = (function () {
   function cardDetail(id) {
     const c = vault().cards.find(x => x.id === id); if (!c) return;
     const keys = c.role === 'P' ? Sim.PIT : Sim.BAT, opp = c.role === 'P' ? Sim.BAT : Sim.PIT;
-    sheet(`${cardFace({ name: c.name, num: c.num, color: c.color, av: +c.avatar || 1, ovr: c.ovr, ovrLbl: c.filler ? 'OVR' : '전성기 OVR', sub: `${M.POS_KO[c.pos]}${c.tw ? ' · 이도류' : ''}${c.filler ? ' · 생성 선수' : c.team ? ' · 원작 ' + c.team : ''}`, emblem: (c.team || '⚾').slice(0, 2), r: c.r, keys, opp: c.tw ? opp : null, oppLbl: c.role === 'P' ? '타격' : '투구', hof: c.career && c.career.hof, foot: c.filler ? '' : cardFoot(c) })}
+    sheet(`${cardFace({ name: c.name, num: c.num, color: c.color, av: +c.avatar || 1, ovr: c.ovr, ovrLbl: c.filler ? 'OVR' : '최고 OVR', sub: `${M.POS_KO[c.pos]}${c.tw ? ' · 이도류' : ''}${c.filler ? ' · 생성 선수' : c.team ? ' · 원작 ' + c.team : ''}`, emblem: (c.team || '⚾').slice(0, 2), r: c.r, keys, opp: c.tw ? opp : null, oppLbl: c.role === 'P' ? '타격' : '투구', hof: c.career && c.career.hof, foot: c.filler ? '' : cardFoot(c) })}
       <div class="tiny muted" style="margin-top:6px">${c.filler ? "생성 선수 — 모든 능력치 65. 이 포지션에 선수가 모자라서 들어 있다. 보관함 슬롯을 차지하니, 꽉 찬 슬롯에 새 선수를 넣으려면 지우면 된다." : c.primeAge ? `원작 ${c.primeYear}시즌(${c.primeAge}세) 개막 능력치로 고정` : '나이별 기록이 없어 대표 카드 능력치로 고정'}${c.tw ? ` · 반대쪽 OVR ${c.oppOvr}` : ''}</div>
       ${c.filler ? "" : `<div class="small" style="margin-top:10px">원작 통산 WAR <b>${c.career.war}</b> · 점수 ${c.career.score} · ${c.career.seasons}시즌 · ${c.career.retireAge}세 은퇴${c.career.hof ? ' · <b>명예의 전당</b>' : ''}</div>`}
       ${c.career.aw && c.career.aw.length ? `<div class="stamps sm">${c.career.aw.map(a => `<span class="stamp ${/MVP|우승|골든/.test(a) ? 'gold' : ''}">${esc(a)}</span>`).join('')}</div>` : ''}
@@ -343,7 +350,7 @@ const ModesUI = (function () {
     if (!best) { X.msg = tw ? '이도류 커리어가 나오지 않았다. 다시 눌러 보자.' : '커리어를 만들지 못했다'; return; }
     best.dev = true;
     const v = vault(); const r = M.vaultAdd(v, best);
-    if (r.ok) { saveVault(v); X.msg = `테스트 카드: ${best.name} (${M.POS_KO[best.pos]}, 전성기 OVR ${best.ovr}) 저장`; }
+    if (r.ok) { saveVault(v); X.msg = `테스트 카드: ${best.name} (${M.POS_KO[best.pos]}, 최고 OVR ${best.ovr}) 저장`; }
     else X.msg = r.why === 'full' ? `${M.POS_KO[best.pos]} 슬롯이 가득 찼다 (${best.name} OVR ${best.ovr}은 저장 안 함)` : '저장 실패';
   }
 
@@ -359,15 +366,15 @@ const ModesUI = (function () {
     let card;
     try { card = M.cardFromCareer(st, G().cardData(st)); } catch (e) { return ''; }
     const v = vault(), have = v.cards.find(c => c.id === card.id);
-    if (have) return `<div class="panel reveal x-save"><b>🗂️ 보관함에 저장됨</b><div class="small muted">${esc(M.POS_KO[have.pos])} 슬롯 · 전성기 OVR ${have.ovr}</div><button class="btn small" data-act="x-go" data-v="x-vault" style="margin-top:8px">보관함 보기</button></div>`;
+    if (have) return `<div class="panel reveal x-save"><b>🗂️ 보관함에 저장됨</b><div class="small muted">${esc(M.POS_KO[have.pos])} 슬롯 · 최고 OVR ${have.ovr}</div><button class="btn small" data-act="x-go" data-v="x-vault" style="margin-top:8px">보관함 보기</button></div>`;
     const chk = M.vaultCheck(v, card);
-    return `<div class="panel reveal x-save"><div class="row" style="align-items:center;gap:10px"><div style="flex:1"><b>🗂️ 확장 모드 보관함</b><div class="small muted">${esc(M.POS_KO[card.pos])} 슬롯 ${chk.same.length}/${M.capOf(card.pos)} · 전성기 OVR <b>${card.ovr}</b>${card.primeAge ? ` (${card.primeAge}세 개막)` : ''}</div></div>
-      <button class="btn small primary" data-act="x-save">보관함에 저장</button></div>${ageRow(card, X.saveAge, 'x-save-age')}
+    return `<div class="panel reveal x-save"><div class="row" style="align-items:center;gap:10px"><div style="flex:1"><b>🗂️ 확장 모드 보관함</b><div class="small muted">${esc(M.POS_KO[card.pos])} 슬롯 ${chk.same.length}/${M.capOf(card.pos)} · 최고 OVR <b>${card.ovr}</b></div></div>
+      <button class="btn small primary" data-act="x-save">보관함에 저장</button></div>
       <div class="tiny muted" style="margin-top:6px">저장한 선수는 리그모드·온라인모드 라인업에 넣을 수 있다. 원작 기록은 그대로 남는다.</div></div>`;
   }
   function saveFromRetire() {
     const st = G().App.st; if (!st || !st.final) return;
-    const card = M.cardFromCareer(st, G().cardData(st)); card.age0 = Math.min(M.primeAgeOf(card), X.saveAge || M.startAgeOf(card)); X.saveAge = null;   // 고른 시작 나이 (기본 4살 어리게)
+    const card = M.cardFromCareer(st, G().cardData(st));   // 70차: 시작 나이는 리그 라인업에 넣을 때 고른다
     const v = vault(), chk = M.vaultCheck(v, card);
     if (chk.ok) { M.vaultAdd(v, card); saveVault(v); G().render(); return; }
     if (chk.why === 'dup') { G().render(); return; }
@@ -414,7 +421,7 @@ const ModesUI = (function () {
     const c = X.create || (X.create = { slot: 'HH', name: '', emblem: '🦅', color: null });
     const team = GAME_DATA.teams.find(t => t.id === c.slot);
     return `${topbar(MODE[X.mode].title + ' · 구단 만들기', 'x-hub')}${msgBox()}
-      <div class="panel"><h3>1. 이어받을 구단 슬롯</h3><div class="small muted">홈구장·일정을 이어받고 이름과 엠블럼을 내 구단으로 바꾼다. 선수는 보관함 선수로 꾸리고, 보관함에 없는 자리는 모든 능력치 65인 생성 선수로 채운다.</div>
+      <div class="panel"><h3>1. 이어받을 구단 슬롯</h3><div class="small muted">홈구장·일정을 이어받고 이름과 엠블럼을 내 구단으로 바꾼다. 원래 그 구단 선수가 포지션마다 한 명씩(선발 5 · 불펜 5 · 마무리 1) 이름만 조금 바뀌어 남는다. 보관함 선수는 라인업에 넣을 때 나이를 골라 투입한다.</div>
         <div class="x-teamgrid">${GAME_DATA.teams.map(t => `<button class="x-team ${c.slot === t.id ? 'on' : ''}" data-act="x-cr" data-k="slot" data-v="${t.id}" style="--team:${t.color}">${esc(t.name)}</button>`).join('')}</div></div>
       <div class="panel"><h3>2. 구단 이름</h3><input id="x-club-name" class="x-input" maxlength="12" placeholder="${esc(team.name)} 자리의 새 이름" value="${esc(c.name)}"></div>
       <div class="panel"><h3>3. 엠블럼과 색</h3><div class="x-emb">${EMBLEMS.map(e => `<button class="${c.emblem === e ? 'on' : ''}" data-act="x-cr" data-k="emblem" data-v="${e}">${e}</button>`).join('')}</div>
@@ -665,7 +672,8 @@ const ModesUI = (function () {
   const gradeOf = ovr => ovr >= 88 ? 'legend' : ovr >= 80 ? 'gold' : ovr >= 70 ? 'silver' : 'bronze';
   // 카드 아래 한 줄: 전성기 연도·나이 · 노화 유형 (예전 카드는 노화 유형이 저장돼 있지 않아 표준형으로 친다)
   const AGING_KO = { iron: '철인형', long: '장수형', std: '표준형', early: '조기 쇠퇴형', meteor: '혜성형', flash: '반짝 각성형' };
-  const cardFoot = c => `${c.primeYear ? c.primeYear + ' · ' : ''}${c.primeAge ? `${c.primeAge}세 전성기` : '전성기 28세 기준'} · ${c.aging ? AGING_KO[c.aging] || '표준형' : '표준형(기본)'} 노화`;
+  const GROWTH_KO = { early: '조숙형', std: '보통', late: '대기만성형' };
+  const cardFoot = c => `성장 ${GROWTH_KO[c.growth] || '보통'} · ${c.aging ? AGING_KO[c.aging] || '표준형' : '표준형(기본)'} 노화`;
   function cardFace(o) {
     const g = o.hof ? 'hof' : gradeOf(o.ovr), gl = o.hof ? 'HALL OF FAME' : { bronze: 'BRONZE', silver: 'SILVER', gold: 'GOLD', legend: 'LEGEND' }[g];
     const bg = G().cardBg ? G().cardBg(o.color || '#3d4a5c') : (o.color || '#3d4a5c');
@@ -691,7 +699,7 @@ const ModesUI = (function () {
     const at = slot && slot !== '-' ? slot : p.pos;
     const ovrAt = slotOvr(p, at), own = vc ? vc.ovr : M.dispOvr(p.r, p.pos), pt = penTxt(p, at);
     const a = avOf(p), posTxt = `${M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos}${p.role === 'TW' ? ' · 이도류' : ''}${p.foreign ? ' · 외국인' : ''}${p.filler ? ' · 생성 선수 (모든 능력치 65)' : vc ? ' · 보관함 선수' : p.user ? ' · 유저 선수' : ''}`;
-    sheet(`${cardFace({ name: p.name, num: p.num, color: a.color, av: a.av, ovr: own, ovrLbl: vc && !p.filler ? '전성기 OVR' : 'OVR', sub: posTxt, emblem: X.mode && league() ? league().club.emblem : '⚾', r: p.r, keys: main, opp: p.role === 'TW' ? opp : null, oppLbl: pitch ? '타격' : '투구', hof: vc && vc.career && vc.career.hof, foot: vc && !vc.filler ? cardFoot(vc) : '' })}
+    sheet(`${cardFace({ name: p.name, num: p.num, color: a.color, av: a.av, ovr: own, ovrLbl: vc && !p.filler ? '최고 OVR' : 'OVR', sub: posTxt, emblem: X.mode && league() ? league().club.emblem : '⚾', r: p.r, keys: main, opp: p.role === 'TW' ? opp : null, oppLbl: pitch ? '타격' : '투구', hof: vc && vc.career && vc.career.hof, foot: vc && !vc.filler ? cardFoot(vc) : '' })}
       ${slot && at !== p.pos && ovrAt !== own ? `<div class="tiny muted" style="margin-top:6px">${esc(M.POS_KO[slot] || slot)} 자리 기준 OVR <b>${ovrAt}</b></div>` : ''}
       ${pt ? `<div class="tiny x-warn" style="margin:4px 0 0">${esc(pt)}</div>` : ''}
       ${note ? `<div class="tiny muted" style="margin-top:4px">${note}</div>` : ''}
@@ -718,11 +726,12 @@ const ModesUI = (function () {
       <div class="x-cand-mid"><div><b>${X.luIds && X.luIds.has(p.id) ? '★' : ''}${esc(p.name)}</b>${hurtLeft(p) ? ` <b class="x-warn">🚑 부상 ${hurtLeft(p)}경기</b>` : ''} ${posLabel ? `<span class="chip">${esc(posLabel)}</span>` : `<span class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)}${p.role === 'TW' ? ' · 이도류' : ''}</span>`}${tag ? `<span class="tiny muted"> · ${tag}</span>` : ''}${pitch && !noCond ? condTag(p) : ''}</div>${abilLine(p, pitch, slot)}</div>
       <span class="x-pk-ovr"><b class="num">${at}</b>${at !== own ? `<i>본래 ${own}</i>` : ''}</span></div>`;
   }
+  const tagOf = p => p.fresh ? '보관함 · 새로 투입' : p.filler ? '생성 선수' : p.card ? '보관함' : p.own ? '원래 구단 선수' : p.user ? '유저 선수' : '';
   function openPick(el) {
     const x = el.dataset.x, i = el.dataset.i, k = el.dataset.k;
     X.pk = { x, i, k };
     if (/^lg-/.test(x)) {
-      const lg = league(), lu = lg.lineup, pool = M.myPool(lg); X.luIds = luSet(lg);
+      const lg = league(), lu = lg.lineup, pool = M.myPool(lg).concat(M.freshCards(lg, vault())); X.luIds = luSet(lg);   // 70차: 아직 안 넣은 보관함 카드도 (고르면 나이 선택)
       // 제 포지션 선수만 고를 수 있다 (지명타자는 타자 누구나). 다른 칸에 있던 선수와 맞바꿀 때 그 칸 규칙도 지켜야 한다
       const byOvr = slot => (a, b) => (!!a.filler - !!b.filler) || slotOvr(b, slot) - slotOvr(a, slot);   // 보관함 선수 먼저, 생성 선수(빈 칸)는 아래에 연하게
     if (x === 'lg-bp') {
@@ -730,11 +739,10 @@ const ModesUI = (function () {
         const list = pool.filter(p => M.fitsSlot(p, slot) && (() => { const j = lu.bat.findIndex((b, q) => q !== +i && b.id === p.id); return j < 0 || !curP || M.fitsSlot(curP, lu.bat[j].slot); })()).sort(byOvr(slot));
         return pickSheet(`${+i + 1}번 타자 · ${M.POS_KO[slot]}`, list.map(p => {
           const j = lu.bat.findIndex((b, q) => q !== +i && b.id === p.id);
-          return { v: p.id, sel: p.id === cur, ghost: p.filler, html: candHtml(p, slot, false, p.filler ? '생성 선수' : p.card ? '보관함' : p.user ? '유저 선수' : ''), note: j >= 0 ? `지금 ${j + 1}번 타자 — 고르면 자리를 맞바꾼다` : '' };
+          return { v: p.id, sel: p.id === cur, ghost: p.filler, html: candHtml(p, slot, false, tagOf(p)), note: j >= 0 ? `지금 ${j + 1}번 타자 — 고르면 자리를 맞바꾼다` : '' };
         }), slot === 'DH' ? '지명타자는 어느 포지션 타자든 고를 수 있다 · ★ 지금 라인업에 든 선수' : `${M.POS_KO[slot]}만 고를 수 있다 · ★ 지금 라인업에 든 선수`);
       }
       // 후보·불펜·선발·마무리 선택 창: 위에는 지금 그 무리(후보 1~5, 불펜 1~5, 1~5선발)에 든 선수를 차례대로, 그 아래는 라인업에 없는 선수 OVR 순
-      const tagOf = p => p.filler ? '생성 선수' : p.card ? '보관함' : p.user ? '유저 선수' : '';
       if (x === 'lg-bn') {   // 후보: 타순에 없는 타자 누구나 (다른 후보 칸에 있던 선수면 맞바꾼다)
         const BN = lu.BN || [], cur = BN[+i], bat = new Set(lu.bat.map(b => b.id)), inBN = new Set(BN.filter(Boolean));
         const members = BN.map((id, j) => ({ id, j })).filter(m => m.id && pool.some(p => p.id === m.id));
@@ -759,8 +767,20 @@ const ModesUI = (function () {
       }
     }
   }
+  // 70차: 보관함 카드 첫 투입 — 시작 나이 고르기 (20~30세). 한 번 넣으면 은퇴하기 전에는 못 바꾼다
+  function agePickSheet(pid) {
+    const c = vault().cards.find(x => 'v:' + x.id === pid); if (!c) return;
+    const pa = M.primeAgeOf(c), ages = Array.from({ length: M.MB.age.startMax - M.MB.age.startMin + 1 }, (_, i) => M.MB.age.startMin + i);
+    sheet(`<h3>${esc(c.name)} · 시작 나이</h3>
+      <div class="small muted" style="margin-bottom:8px">최고 OVR ${c.ovr}. 최고 OVR만 카드와 같고, 성장 속도와 노화 시점은 넣을 때마다 새로 정해진다. 어리게 넣을수록 낮게 시작하고, 많이 뛸수록 잘 자란다 (성장 유형도 반영). <b>한 번 넣으면 은퇴하기 전에는 나이를 바꿀 수 없다.</b></div>
+      <div class="x-agebtns x-agebtns-11">${ages.map(a => { const s = M.startPreview(c, a); return `<button class="x-agebtn" data-act="x-age-pick" data-v="${a}" data-id="${esc(pid)}"><b class="num">${a}세</b><span class="tiny">OVR ${s.ovr}</span></button>`; }).join('')}</div>
+      <div class="tiny muted" style="margin-top:6px">나이를 누르고 한 번 더 누르면 투입된다.</div>
+      <button class="btn small block" data-act="x-close-btn" style="margin-top:12px">취소</button>`);
+  }
   function doPick(v) {
     const pk = X.pk; if (!pk) return;
+    // 70차: 아직 리그에 안 넣은 보관함 카드면 먼저 시작 나이를 고른다
+    if (/^lg-/.test(pk.x) && v && /^v:/.test(v) && !league().cards[v]) { agePickSheet(v); return; }
     X.lsel = [];
     if (/^lg-/.test(pk.x)) lgSelectChange({ dataset: { x: pk.x, i: pk.i, k: pk.k }, value: v });
     X.pk = null;
@@ -920,7 +940,7 @@ const ModesUI = (function () {
       const mv = farmOn && !p.filler && lg.cur.phase !== 'post' ? `<button class="btn small ghost x-farm-btn" data-act="x-farm" data-v="${esc(p.id)}" data-on="${farm ? 0 : 1}">${farm ? '1군 ↑' : '2군 ↓'}</button>` : '';
       const champs = R ? R.seasons.filter(x => x.champ).length : 0, titles = R ? R.seasons.reduce((n, x) => n + (x.titles || []).length, 0) : 0;
       return `<div class="x-myrow ${p.filler ? 'x-filler' : ''}"><button class="x-myav" data-act="x-myp" data-v="${esc(p.id)}" title="역대 기록"><canvas class="x-av" width="16" height="16" data-av="${a.av}" data-color="${esc(a.color)}"></canvas></button>
-        <div class="x-myinfo"><div><b>${inLu.has(p.id) ? '★' : ''}${esc(p.name)}</b> <span class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)} · OVR ${p.ovr || M.dispOvr(p.r, p.pos)}${p.filler ? ' · 생성' : p.age ? ` · <b>${p.age}세</b>${p.pa && p.age < p.pa && p.baseR && Object.keys(p.baseR).some(k => p.r[k] < p.baseR[k] - 0.05) ? ` (전성기 ${p.pa}세까지 성장${p.lastF ? ` · 지난 시즌 출전 성장 ×${p.lastF}` : ''})` : ''}` : ''}</span>${champs ? ` <span class="chip gold">🏆${champs}</span>` : ''}${titles ? ` <span class="chip">🏅${titles}</span>` : ''}</div>
+        <div class="x-myinfo"><div><b>${inLu.has(p.id) ? '★' : ''}${esc(p.name)}</b> <span class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)} · OVR ${p.ovr || M.dispOvr(p.r, p.pos)}${p.filler ? ' · 생성' : p.age ? ` · <b>${p.age}세</b>${p.pa && p.age < p.pa && p.baseR && Object.keys(p.baseR).some(k => p.r[k] < p.baseR[k] - 0.05) ? ` (성장 중${p.lastF ? ` · 지난 시즌 출전 성장 ×${p.lastF}` : ''})` : ''}` : ''}</span>${champs ? ` <span class="chip gold">🏆${champs}</span>` : ''}${titles ? ` <span class="chip">🏅${titles}</span>` : ''}</div>
           <div class="tiny">${farm ? '퓨처스' : lg.cur.year + ' 시즌'}: ${line || "<span class=\"muted\">출전 기록 없음</span>"}${hurtLeft(p) ? ` <b class="x-warn">🚑 부상 ${hurtLeft(p)}경기 결장</b>` : ""}</div></div>${mv}</div>`;
     };
     const sec = (t, arr) => arr.length ? `<h4 class="x-h4">${t}</h4>${arr.map(row).join('')}` : '';
@@ -992,14 +1012,14 @@ const ModesUI = (function () {
       ${R.length ? `<button class="btn small block" data-act="x-retlist" style="margin-top:8px">은퇴 선수 ${R.length}명 · 영구결번 지정 ›</button>` : ''}</div>`;
   }
   // ---------- 시즌 리포트 (포스트시즌까지 끝난 뒤) ----------
-  const LOOK_KO = { grow: ['📈', '성장'], hold: ['⭐', '전성기'], down: ['📉', '노쇠'], risk: ['⚠️', '은퇴 위기'] };
+  const LOOK_KO = { grow: ['📈', '성장'], hold: ['⭐', '최고 기량'], down: ['📉', '노쇠'], risk: ['⚠️', '은퇴 위기'] };
   function reportHTML(lg) {
     const R = M.seasonReport(lg); if (!R) return '';
     const who = (x, line) => x ? `<div class="x-rep-who"><b>${esc(x.name)}</b> <span class="tiny muted">${esc(M.POS_KO[x.pos] || x.pos)}${x.war != null ? ` · WAR ${x.war}` : ''}</span><div class="tiny">${line(x)}</div></div>` : '<div class="tiny muted">-</div>';
     const g = R.mgr && R.mgr.year === R.year ? `${R.mgr.ok ? '✔ 달성' : '✘ 실패'} (${GOAL_KO[R.mgr.goal]})` : '';
     const fb = R.farm.filter(x => (x.b && x.b.PA) || (x.p && x.p.outs)).map(x => `<div class="tiny">🌱 <b>${esc(x.name)}</b> ${[batLine(x.b), pitLine(x.p)].filter(Boolean).join(' / ')}</div>`).join('');
     const look = k => R.look.filter(x => x.k === k);
-    const lk = k => look(k).length ? `<div class="x-look ${k}"><b class="small">${LOOK_KO[k][0]} ${LOOK_KO[k][1]} ${look(k).length}명</b><div class="tiny">${look(k).map(x => `${esc(x.name)} <i class="muted">${x.age}세${x.farm ? '·2군' : ''}${k === 'grow' ? ` → 전성기 ${x.pa}세` : ''}</i>`).join(' · ')}</div></div>` : '';
+    const lk = k => look(k).length ? `<div class="x-look ${k}"><b class="small">${LOOK_KO[k][0]} ${LOOK_KO[k][1]} ${look(k).length}명</b><div class="tiny">${look(k).map(x => `${esc(x.name)} <i class="muted">${x.age}세${x.farm ? '·2군' : ''}</i>`).join(' · ')}</div></div>` : '';
     return `<div class="panel x-report"><h3>📋 ${R.year} 시즌 리포트</h3>
       <div class="x-trophy-sum" style="margin:6px 0 10px"><div><span class="tiny">정규시즌</span><b class="num">${R.rank}위</b><span class="tiny muted">${R.w}승 ${R.l}패${R.t ? ` ${R.t}무` : ''} · 득실 ${R.rs - R.ra > 0 ? '+' : ''}${R.rs - R.ra}</span></div>
         <div class="${R.post === '한국시리즈 우승' ? 'gold' : ''}"><span class="tiny">가을야구</span><b class="small">${esc(R.post)}</b>${g ? `<span class="tiny muted">목표 ${g}</span>` : ''}</div>
@@ -1008,7 +1028,7 @@ const ModesUI = (function () {
         <div><span class="tiny muted">🏏 최고 타자</span>${who(R.bat, x => batLine(x.b))}</div><div><span class="tiny muted">🎯 최고 투수</span>${who(R.pit, x => pitLine(x.p))}</div></div>
       ${fb ? `<h4 class="x-h4">퓨처스에서 뛴 선수</h4>${fb}` : ''}
       <h4 class="x-h4">다음 시즌 전망</h4>${lk('grow')}${lk('hold')}${lk('down')}${lk('risk')}${R.look.length ? '' : '<div class="tiny muted">보관함 카드가 없다.</div>'}
-      <div class="tiny muted" style="margin-top:6px">은퇴 위기: 다음 시즌 ${M.MB.age.retire}세가 되거나, ${M.MB.age.dropAge}세 이후 전성기보다 OVR이 ${M.MB.age.drop - 4} 넘게 떨어진 선수.</div></div>`;
+      <div class="tiny muted" style="margin-top:6px">은퇴 위기: 다음 시즌 ${M.MB.age.retire}세가 되거나, ${M.MB.age.dropAge}세 이후 최고 OVR보다 ${M.MB.age.drop - 4} 넘게 떨어진 선수.</div></div>`;
   }
   // 다음 시즌 시작 뒤: 오프시즌 변화 (나이 먹고 자라거나 늙은 정도, 은퇴)
   function offSheet() {
@@ -1657,6 +1677,13 @@ const ModesUI = (function () {
       case 'x-rot': rotSheet(); break;
       case 'x-myp': myCareerSheet(v); break;
       case 'x-pk-do': closeSheet(); doPick(v); break;
+      case 'x-age-pick': {   // 70차: 보관함 카드 첫 투입 (나이 확정)
+        if (!G().armed('x-age-' + v, el, `${v}세로 투입`)) break;
+        const lg = league(), id = el.dataset.id, p = M.activateCard(lg, vault(), id.replace(/^v:/, ''), +v);
+        closeSheet();
+        if (p) { saveLeague(); X.msg = `${p.name} ${p.age}세로 투입 (OVR ${p.ovr})`; doPick(id); } else X.msg = '투입할 수 없는 카드다';
+        G().render(); break;
+      }
       case 'x-pinfo': {
         const slot = el.dataset.s;
         { const lg = league(), p = M.lgPlayer(lg, v); if (p) playerSheet(p, slot, lg.cur.stats[v]); }
@@ -1686,8 +1713,6 @@ const ModesUI = (function () {
       case 'x-lu-clear': if (G().armed('x-lu-clear', el, '한 번 더')) { const vv = vault(); vv.lineup = {}; saveVault(vv); G().render(); } break;
       case 'x-devcard': el.textContent = '만드는 중…'; setTimeout(() => { busy(() => devCard(v)); G().render(); }, 30); break;
       case 'x-save': saveFromRetire(); break;
-      case 'x-save-age': X.saveAge = +v; G().render(); break;
-      case 'x-card-age': { const vv = vault(), c = vv.cards.find(x => x.id === el.dataset.id); if (c) { c.age0 = +v; saveVault(vv); cardDetail(c.id); } break; }
       case 'x-card-reuse': { const vv = vault(), c = vv.cards.find(x => x.id === v); if (c) { delete c.rest; saveVault(vv); X.msg = `${c.name} 다시 쓰기 — ${M.startAgeOf(c)}세로 새 생활`; closeSheet(); G().render(); } break; }
       case 'x-hof-add': if (G().armed('x-hof-' + v, el, '한 번 더 누르면 명예의 전당에 올린다 (보관함에서 빠진다)')) { const vv = vault(), r = M.hofInduct(vv, v, [league('lg'), league('on')]); if (r.ok) { saveVault(vv); saveBoth(); G().render(); hofSheet(); } else X.msg = r.why === 'full' ? '명예의 전당이 가득 찼다 (10명)' : '올릴 수 없다'; } break;
       case 'x-hof': hofSheet(); break;

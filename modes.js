@@ -128,7 +128,16 @@ const Modes = (function () {
       const o = S.ovrAt(prev.r, mainPos);
       if (!best || o > best.ovr + 1e-9) best = { ovr: o, r: Object.assign({}, prev.r), age: h.age, year: h.year, src: 'open' };
     }
-    if (best) return best;
+    if (best) {
+      // 70차: 전성기 나이 = 최고 OVR(화면)보다 1 낮은 수준에 처음 닿은 해 (원작 OVR이 30대 초반까지 1씩 조금 더 올라 늘 30대가 잡히던 것). 능력치는 최고 시즌 그대로
+      const top = S.disp(best.ovr);
+      for (let i = 1; i < H.length; i++) {
+        const h = H[i], prev = H[i - 1];
+        if (h.stage !== 'pro' || !prev.r || !(h.lg === 'KBO' || h.lg === 'NPB' || h.lg === 'MLB')) continue;
+        if (S.disp(S.ovrAt(prev.r, mainPos)) >= top - 1) { best.age = h.age; break; }
+      }
+      return best;
+    }
     // 나이별 기록이 없으면 대표 카드 능력치 (커리어 최고 능력치 → 없으면 은퇴 시점)
     const r = Object.assign({}, (st.car && st.car.peakR) || me.r);
     return { ovr: S.ovrAt(r, mainPos), r, age: null, year: null, src: 'card' };
@@ -154,7 +163,7 @@ const Modes = (function () {
       team: (cd && cd.team) || f.mainTeamName || '', pos, role: me.role, tw, bats: me.bats, throws: me.throws,
       closer: !!(me.flags && (me.flags.closer || (me.flags.pos0 === 'CL'))),
       r, ovr: S.disp(prime.ovr), oppOvr: tw ? S.disp(me.role === 'P' ? S.ovrAt(r, 'DH') : S.ovrAt(r, 'RP')) : null,
-      primeAge: prime.age, primeYear: prime.year, primeSrc: prime.src, aging: me.meteor ? 'meteor' : me.awaken && me.awaken.kind === 'flash' ? 'flash' : me.aging || 'std',   // 노화 유형 (모드 노화에 쓴다)
+      primeAge: prime.age, primeYear: prime.year, primeSrc: prime.src, growth: me.growth || 'std', aging: me.meteor ? 'meteor' : me.awaken && me.awaken.kind === 'flash' ? 'flash' : me.aging || 'std',   // 노화 유형 (모드 노화에 쓴다)
       career: { war: Math.round((f.war || 0) * 10) / 10, score: f.score || 0, hof: !!(f.hof && f.hof.in), seasons: f.seasons || 0, retireAge: f.retireAge || me.age, aw },
       savedAt: Date.now(),
     };
@@ -173,7 +182,9 @@ const Modes = (function () {
   }
   // 보관함에 생성 선수 채우기 (바뀌면 true)
   function ensureFillers(vault) {
-    vault.cards = vault.cards || []; let ch = false;
+    vault.cards = vault.cards || [];
+    return false;   // 70차: 생성 선수 카드는 더 만들지 않는다 (내 구단은 원래 구단 선수로 시작)
+    let ch = false;
     for (const pos of VAULT_POS) {
       let n = vault.cards.filter(c => c.pos === pos).length;
       for (let i = 0; n < FILL_MIN(pos) && n < capOf(pos); i++) { const id = 'f-' + pos + '-' + i; if (vault.cards.some(c => c.id === id)) continue; vault.cards.push(fillerCard(pos, i)); n++; ch = true; }
@@ -741,7 +752,7 @@ const Modes = (function () {
     if (o.online) userClubs(seed, teams, players, o.slot);
     const lg = { v: 1, mode: o.online ? 'online' : 'league', seed, my: o.slot, club, year: o.year || 2027, season: 1, teams, players, cards: {}, lineup: null, lineups: {}, hist: [], cardRec: {}, ageV: 1 };
     for (const t of teams) lg.lineups[t.id] = autoLineup(t.roster.map(id => players[id]));
-    signCards(lg, o.vault || { cards: [] });   // 내 구단 = 보관함 카드 (없는 포지션은 생성 선수 카드)
+    signCards(lg, o.vault || { cards: [] });   // 70차: 내 구단 = 원래 구단 선수(이름 바꿈). 보관함 카드는 라인업에 넣을 때 나이를 골라 들어온다
     lg.lineup = myAutoLineup(myPool(lg), bpN(lg));
     lg.aiV = 2;   // 컴퓨터 구단은 처음부터 능력치를 올려 만든다 (makeRosters)
     startLeagueSeason(lg); mgrGoal(lg);
@@ -816,7 +827,7 @@ const Modes = (function () {
   }
   // 내 구단 선수 = 보관함 카드뿐 (생성 선수도 보관함 카드로 들어 있다). 바뀌어서 라인업에 없는 선수가 생기면 자동 편성.
   function syncMyRoster(lg) {
-    const t = lg.teams.find(x => x.id === lg.my); t.roster = [];
+    const t = lg.teams.find(x => x.id === lg.my); t.roster = (lg.own || []).slice();   // 70차: 원래 구단 선수(이름 바꿈)는 그대로 내 선수
     if (lg.lineup) {
       const ids = new Set(myPool(lg).map(p => p.id)), lu = lg.lineup;
       const used = [].concat(lu.bat.map(b => b.id), lu.sp, [lu.CL, lu.CL2], lu.SU || [], lu.MR || [], lu.LR || []).filter(Boolean);
@@ -859,13 +870,57 @@ const Modes = (function () {
     lg.lineup = { bat: old.bat.map(b => ({ id: null, slot: b.slot })), sp: [null, null, null, null, null], CL: null, CL2: null, SU: [null, null], MR: Array(bpN(lg) - 2).fill(null), LR: [], BN: Array(BN_N).fill(null), v2: 1 };
   }
   // 보관함 ↔ 리그: 보관함에 있는 카드만 내 선수. 보관함에서 지운 카드는 기록 조회용(lg.gone)으로만 남긴다
+  // 70차: 원래 구단 선수 이름을 조금 바꾼다 — 한글 두 글자의 모음을 비슷한 모음으로 (윤동희 → 윤덩흐, 전민재 → 잔만재)
+  const VOWEL_SWAP = { 0: 4, 4: 0, 8: 4, 13: 18, 18: 13, 20: 0, 19: 18, 1: 5, 5: 1, 2: 6, 6: 2, 3: 7, 7: 3, 12: 17, 17: 12, 9: 0, 14: 4, 11: 8, 16: 20, 10: 1, 15: 5 };
+  function renameKo(name, key) {
+    const ch = [...(name || '')], idx = ch.map((c, i) => { const v = c.charCodeAt(0); return v >= 0xAC00 && v <= 0xD7A3 ? i : -1; }).filter(i => i >= 0);
+    if (!idx.length) return name;
+    const R = makeRng(hash('rename|' + key + '|' + name)), pick = idx.length <= 2 ? idx : R.shuffle(idx.slice()).slice(0, 2);
+    for (const i of pick) {
+      const v = ch[i].charCodeAt(0) - 0xAC00, cho = Math.floor(v / 588), jung = Math.floor((v % 588) / 28), jong = v % 28;
+      const nj = VOWEL_SWAP[jung] != null ? VOWEL_SWAP[jung] : jung;
+      ch[i] = String.fromCharCode(0xAC00 + cho * 588 + nj * 28 + jong);
+    }
+    const out = ch.join('');
+    return out === name ? name + '' : out;
+  }
+  // 70차: 내 구단 기본 선수 — 원래 그 구단 선수 중 포지션마다 한 명 (야수 9 · 선발 5 · 불펜 5 · 마무리 1), 이름만 조금 바꾼다
+  function ownPlayers(lg) {
+    const t = lg.teams.find(x => x.id === lg.my), all = Object.keys(lg.players).filter(id => id.indexOf(lg.my + ':') === 0).map(id => lg.players[id]);
+    const used = new Set(), own = [];
+    const take = (ok, sortKey) => { const p = all.filter(q => !used.has(q.id) && ok(q)).sort((a, b) => S.ovrAt(b.r, sortKey) - S.ovrAt(a.r, sortKey))[0]; if (p) { used.add(p.id); own.push(p); } return p; };
+    for (const pos of BAT_POS) {   // 그 포지션 선수 → 없으면 같은 계열(외야) → 없으면 아무 타자. 고른 선수는 그 자리 포지션으로
+      const p = take(q => isBatter(q) && q.pos === pos, simPos(pos)) || take(q => isBatter(q) && simPos(q.pos) === simPos(pos), simPos(pos)) || take(q => isBatter(q), simPos(pos));
+      if (p) p.pos = pos;
+    }
+    for (let i = 0; i < 5; i++) take(q => q.pos === 'SP', 'SP');
+    const cl = take(q => q.pos === 'RP', 'RP'); if (cl) { cl.pos = 'CL'; cl.closer = true; }
+    for (let i = 0; i < 5; i++) if (!take(q => q.pos === 'RP', 'RP')) { const x = take(q => q.pos === 'SP', 'RP'); if (x) x.pos = 'RP'; }
+    for (const p of own) { if (!p.ren) { p.name = renameKo(p.name, lg.seed + '|' + p.id); p.ren = 1; } p.own = true; }
+    lg.own = own.map(p => p.id);
+    if (t) t.roster = lg.own.slice();
+    return lg.own;
+  }
+  // 70차: 보관함 카드를 리그에 처음 넣는다 (라인업에 넣을 때 나이를 고른다, 20~30세). 한 번 넣으면 은퇴하기 전에는 나이를 못 바꾼다
+  function activateCard(lg, vault, cardId, age) {
+    const c = (vault.cards || []).find(x => x.id === cardId);
+    if (!c || c.filler || !cardUsable(c, lg)) return null;
+    const p = cardPlayer(c); if (lg.cards[p.id]) return lg.cards[p.id];
+    lg.cards[p.id] = newLife(p, c, age);
+    fixNums(lg); syncMyRoster(lg);
+    return lg.cards[p.id];
+  }
+  // 시작 나이별 미리 보기 (그 나이로 넣으면 시작 OVR)
+  function startPreview(c, age) { const p = newLife(cardPlayer(c), c, age); return { ovr: p.ovr, age: p.age, pa: p.pa }; }
+  // 아직 리그에 안 넣은 보관함 카드 (라인업 선택 창에 '새로 투입'으로 보인다)
+  function freshCards(lg, vault) { return (vault.cards || []).filter(c => !c.filler && cardUsable(c, lg) && !lg.cards['v:' + c.id]).map(c => Object.assign(cardPlayer(c), { fresh: true, pa: primeAgeOf(c) })); }
   function signCards(lg, vault) {
-    ensureFillers(vault);
     const ids = new Set(); let n = 0;
-    // 은퇴해 쉬는 카드·3번 다 쓴 카드는 빠진다. 새로 들어오면 고른 나이로 새 생활
-    for (const c of vault.cards || []) { if (!cardUsable(c, lg)) continue; const p = cardPlayer(c); ids.add(p.id); if (!lg.cards[p.id]) { lg.cards[p.id] = c.filler ? p : newLife(p, c); n++; } else { if (!c.filler) lifeInit(lg.cards[p.id], c); if (lg.cards[p.id].bats == null) { lg.cards[p.id].bats = p.bats; lg.cards[p.id].throws = p.throws; } } }
-    // 은퇴해 쉬는 카드·다 쓴 카드는 보관함 슬롯은 차지하지만 이 리그에선 못 뛴다 → 그 포지션에 뛸 선수가 모자라면 이 리그에만 생성 선수 (보관함에는 안 넣는다)
-    for (const pos of VAULT_POS) {
+    if (!lg.own) { ownPlayers(lg); n++; }   // 예전 리그도 원래 구단 선수를 받는다
+    // 70차: 보관함 카드는 라인업에 넣을 때 나이를 골라 들어온다 (activateCard). 여기서는 이미 들어온 카드만 이어 간다. 은퇴해 쉬는 카드·지운 카드는 빠진다
+    for (const c of vault.cards || []) { if (!cardUsable(c, lg)) continue; const p = cardPlayer(c); if (!lg.cards[p.id]) continue; ids.add(p.id); if (!c.filler) lifeInit(lg.cards[p.id], c); if (lg.cards[p.id].bats == null) { lg.cards[p.id].bats = p.bats; lg.cards[p.id].throws = p.throws; } }
+    // 원래 구단 선수가 없는 예전 리그만: 뛸 선수가 모자라면 이 리그에만 생성 선수
+    if (!lg.own) for (const pos of VAULT_POS) {
       let have = (vault.cards || []).filter(c => c.pos === pos && cardUsable(c, lg) && !inFarm(lg, 'v:' + c.id)).length;   // 2군 카드는 1군 자리를 못 채운다
       for (let i = 0; have < FILL_MIN(pos); i++, have++) { const c = fillerCard(pos, 20 + i); c.id = `lf-${pos}-${i}`; const p = cardPlayer(c); ids.add(p.id); if (!lg.cards[p.id]) { lg.cards[p.id] = p; n++; } }
     }
@@ -891,22 +946,36 @@ const Modes = (function () {
   // ================================================================
   MB.age = { grow: 1.5, back: 4, young: 5, defPrime: 28, retire: 43, dropAge: 35, drop: 20, lives: 3, hof: 10, hold: 4, speed: 0.5 };   // hold: 전성기 뒤 능력치 유지 해 수 · speed: 노화 속도 (원작 대비)
   const modeKey = lg => lg.mode === 'online' ? 'on' : 'lg';
-  const primeAgeOf = c => c.primeAge || MB.age.defPrime;
-  function startAgeOf(c) { const pa = primeAgeOf(c); return Math.max(pa - MB.age.young, Math.min(pa, c.age0 || pa - MB.age.back)); }   // 따로 고르지 않으면 4살 어리게 (5살까지 고를 수 있다)
+  // 70차: 전성기 나이는 26~30세 안으로 (예전에 저장한 카드도 같이)
+  MB.age.primeMin = 26; MB.age.primeMax = 30; MB.age.startMin = 20; MB.age.startMax = 30;
+  const primeAgeOf = c => clamp(c.primeAge || MB.age.defPrime, MB.age.primeMin, MB.age.primeMax);
+  // 70차: 시작 나이는 리그 라인업에 처음 넣을 때 고른다 (20~30세). 보관함의 시작 나이(age0)는 없앴다
+  function startAgeOf(c, age) { return clamp(Math.round(age || MB.age.startMin), MB.age.startMin, MB.age.startMax); }
   const usesOf = c => c.uses || 0, livesLeft = c => Math.max(0, MB.age.lives - usesOf(c));
   // 사용 횟수 제한(3번)은 온라인만. 리그모드는 몇 번이든 다시 쓸 수 있다 (uses는 온라인에서만 센다)
   const limited = lg => modeKey(lg) === 'on';
   const cardUsable = (c, lg) => c.filler || ((!limited(lg) || livesLeft(c) > 0) && !(c.rest && c.rest[modeKey(lg)]));
   function ageKeys(p) { return p.role === 'TW' ? S.ALL : S.mainKeys({ role: isPitcher(p) ? 'P' : 'B' }); }
-  // 새 선수 생활 시작: 고른 나이에 맞춰 능력치를 낮춘다
-  function newLife(p, c) {
-    const pa = primeAgeOf(c), age = startAgeOf(c), n = pa - age;
-    p.pa = pa; p.age = age; p.baseR = Object.assign({}, c.r); p.life = usesOf(c) + 1; p.aging = c.aging || 'std';
-    if (n > 0) for (const k of ageKeys(p)) p.r[k] = Math.max(20, Math.round((c.r[k] - MB.age.grow * n) * 10) / 10);
+  // 70차: 리그에 넣을 때 고른 나이부터 새로 시뮬레이션 — 카드와 같은 건 최고 OVR(능력치 상한)뿐.
+  //   시작 능력치는 어릴수록 낮고(28세 기준 1살에 1.5, 성장 유형·운에 따라 조금씩), 해마다 출전량만큼 자란다.
+  //   노화 시작 나이는 노화 유형 기준으로 생활마다 다르게 굴린다 (혜성형·반짝 각성형은 일찍 크게)
+  MB.age.fullAge = 28;
+  function agingStartRoll(p, R) {
+    if (p.aging === 'meteor' || p.aging === 'flash') return 27 + Math.floor(R() * 4);
+    const ag = S.BAL.aging[p.aging] || S.BAL.aging.std;
+    return ag[0] - 2 + Math.floor(R() * 4);   // 표준형 32세 → 30~33세
+  }
+  function newLife(p, c, startAge) {
+    const age = startAgeOf(c, startAge), life = usesOf(c) + 1 + (c.bank || []).length;
+    const R = makeRng(hash(`life|${c.id}|${life}|${age}`));
+    p.age = age; p.baseR = Object.assign({}, c.r); p.life = usesOf(c) + 1; p.aging = c.aging || 'std'; p.growth = c.growth || 'std';
+    const n = Math.max(0, MB.age.fullAge - age), tk = p.growth === 'early' ? 0.85 : p.growth === 'late' ? 1.15 : 1;
+    if (n > 0) for (const k of ageKeys(p)) p.r[k] = Math.max(20, Math.round((c.r[k] - MB.age.grow * n * tk * (0.9 + R() * 0.2)) * 10) / 10);
+    p.agStart = Math.max(age + 1, agingStartRoll(p, R)); p.pa = p.agStart - 1;
     p.ovr = dispOvr(p.r, p.pos);
     return p;
   }
-  // 예전 리그에 이미 들어 있던 카드: 지금 능력치(전성기) 그대로 전성기 나이부터
+  // 예전 리그에 이미 들어 있던 카드: 지금 능력치 그대로
   function lifeInit(p, c) { if (p.pa != null) return; p.pa = primeAgeOf(c); p.age = p.age || p.pa; p.baseR = Object.assign({}, c.r); p.life = usesOf(c) + 1; p.aging = c.aging || 'std'; }
   // 지난 시즌 출전 비율 → 성장 배수 (0.5 못 뜀 ~ 1.0 보통 주전 ~ 1.25 풀타임). 타자 500타석, 선발 150이닝, 불펜 60이닝이 풀타임
   function playF(lg, p) {
@@ -916,24 +985,26 @@ const Modes = (function () {
     const share = Math.max(sh(s.b, s.p), MB.fut.w * Math.min(1, sh(s.fb, s.fp)));   // 퓨처스(2군) 출전은 90%로 친다
     return Math.round((0.5 + 0.75 * Math.min(1, share)) * 100) / 100;
   }
+  // 예전 방식으로 들어온 카드: 노화 시작 나이를 예전 규칙(전성기 + 유지)으로 정해 둔다
+  function agStartOf(p) {
+    if (p.agStart == null) { const crash = p.aging === 'meteor' || p.aging === 'flash', ag = S.BAL.aging[p.aging] || S.BAL.aging.std; p.agStart = crash ? p.pa + 1 : Math.max(ag[0], p.pa + 1 + MB.age.hold); }
+    return p.agStart;
+  }
   // 한 해 나이 먹기 (새 시즌 시작 때). 반환: 은퇴하면 true
   function ageOne(lg, p) {
     const R = makeRng(hash(`${lg.seed}|age|${lg.season}|${p.id}`));
     p.age++;
-    const keys = ageKeys(p);
-    const short = keys.some(k => p.r[k] < p.baseR[k] - 0.05);
-    if (p.age <= p.pa || (short && p.age <= p.pa + MB.age.hold)) {   // 성장: 전성기 나이에 카드 능력치에 닿게 남은 차이를 나눠 채운다 (유지 기간에도 덜 컸으면 마저)
-      // 출전 보너스: 지난 시즌 많이 뛰면 더 크고(최대 1.25배, 카드 능력치 +2까지), 못 뛰면 덜 큰다(0.5배)
-      const f = playF(lg, p), left = Math.max(1, p.pa - p.age + 1);
-      for (const k of keys) { const step = Math.max(0, (p.baseR[k] - p.r[k]) / left) * f; p.r[k] = Math.round(Math.min(p.baseR[k] + (f > 1 ? 2 : 0), p.r[k] + step) * 10) / 10; }
+    const keys = ageKeys(p), start = agStartOf(p);
+    if (p.age < start) {   // 성장: 최고 능력치(카드)까지 남은 차이의 일부만큼. 많이 뛸수록, 성장 유형에 맞는 나이일수록 많이 큰다 (해마다 운도 섞인다)
+      const f = playF(lg, p), g = p.growth || 'std', a = p.age;
+      const rate = (g === 'early' ? (a <= 23 ? 0.42 : 0.22) : g === 'late' ? (a <= 24 ? 0.18 : 0.38) : 0.28) * f * (0.75 + R() * 0.5);
+      for (const k of keys) { const gap = p.baseR[k] - p.r[k]; if (gap <= 0) continue; const step = Math.max(gap * rate, Math.min(gap, 0.4 * f)); p.r[k] = Math.round(Math.min(p.baseR[k], p.r[k] + step) * 10) / 10; }
       p.lastF = f;
-    } else {   // 노화: 원작 규칙 (유형별 시작 나이, 능력치별 늦게 시작, 해마다 가속)
-      const BAL = S.BAL, crash = p.aging === 'meteor' && BAL.meteor ? BAL.meteor.decline : p.aging === 'flash' && BAL.awaken ? BAL.awaken.flashDecline : null;   // 혜성형·반짝 각성형은 전성기 다음 해부터 바로 크게
-      const ag = crash ? [p.pa + 1].concat(crash) : BAL.aging[p.aging] || BAL.aging.std, start = crash ? p.pa + 1 : Math.max(ag[0], p.pa + 1 + MB.age.hold);   // 전성기 뒤 2년은 유지 (혜성형·반짝 각성형은 원작처럼 바로)
-      if (p.age >= start) {
-        const y = p.age - start, off = isPitcher(p) ? { vel: 0, sta: 0, stf: 1, brk: 1, men: 2, ctl: 2, spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 } : { spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 };
-        for (const k of keys) { if (y < (off[k] || 0)) continue; const d = (ag[1] + Math.floor(R() * (ag[2] - ag[1] + 1))) * (1 + BAL.agingAccel * y) * MB.age.speed; p.r[k] = Math.max(20, Math.round((p.r[k] - d) * 10) / 10); }
-      }
+    } else {   // 노화: 원작 규칙 (유형별 폭, 능력치별 늦게 시작, 해마다 가속). 혜성형·반짝 각성형은 크게
+      const BAL = S.BAL, crash = p.aging === 'meteor' && BAL.meteor ? BAL.meteor.decline : p.aging === 'flash' && BAL.awaken ? BAL.awaken.flashDecline : null;
+      const ag = crash ? [start].concat(crash) : BAL.aging[p.aging] || BAL.aging.std;
+      const y = p.age - start, off = isPitcher(p) ? { vel: 0, sta: 0, stf: 1, brk: 1, men: 2, ctl: 2, spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 } : { spd: 0, def: 0, pow: 1, arm: 1, con: 1, eye: 2 };
+      for (const k of keys) { if (y < (off[k] || 0)) continue; const d = (ag[1] + Math.floor(R() * (ag[2] - ag[1] + 1))) * (1 + BAL.agingAccel * y) * MB.age.speed; p.r[k] = Math.max(20, Math.round((p.r[k] - d) * 10) / 10); }
     }
     p.ovr = dispOvr(p.r, p.pos);
     rateCache.delete(p);   // 능력치가 바뀌었으니 경기용 비율 다시 계산
@@ -1388,6 +1459,34 @@ const Modes = (function () {
       });
       lg.lineups[t.id] = autoLineup(t.roster.map(id => lg.players[id]));
     }
+    // 70차: 내 구단의 원래 구단 선수도 컴퓨터 구단 선수처럼 나이를 먹고, 은퇴하면 같은 포지션 신인이 들어온다
+    if (lg.own && lg.own.length) {
+      const t = lg.teams.find(x => x.id === lg.my), td = DATA.teams.find(x => x.id === lg.my) || { bat: 100, pit: 100 };
+      const sB = (td.bat - 100) * 0.8, sP = (td.pit - 100) * 0.5;
+      let ch = false;
+      lg.own = lg.own.map((id, i) => {
+        const p = lg.players[id]; if (!p) return id;
+        const keys = isPitcher(p) ? S.PIT : S.BAT;
+        if (p.age == null) p.age = aiAge0(id);
+        p.age++;
+        if (p.age <= 27) for (const k of keys) p.r[k] = clamp(p.r[k] + (p.age <= 24 ? 1 + R() * 2 : R() * 1.5), 22, 99);
+        else if (p.age >= 32) { const y = p.age - 32; for (const k of keys) p.r[k] = clamp(p.r[k] - (2 + R() * 2) * (1 + BAL.agingAccel * y) * 0.7, 20, 99); }
+        for (const k of keys) p.r[k] = Math.round(p.r[k] * 10) / 10;
+        rateCache.delete(p);
+        const retire = p.age >= MB.ai.hardAge || (p.age >= MB.ai.retireAge && R() < (p.age - MB.ai.retireAge + 1) * 0.3) || (p.age >= 33 && dispOvr(p.r, p.pos) < 52);
+        if (!retire) return id;
+        const pos = p.pos, gpos = pos === 'CL' ? 'RP' : pos;
+        const base = (isPitcher(p) ? (pos === 'SP' ? 47.5 + sP : 50 + sP) : BAL.starterBase + sB) + MB.ai.boost + MB.ai.rookie;
+        const nid = `${lg.my}:o${i}:s${lg.season}`, np = aiKeyBoost(genPlayer(R, nid, gpos, base, {}));
+        np.pos = pos; if (pos === 'CL') np.closer = true;
+        np.age = 20 + Math.floor(R() * 4); np.rookie = lg.year + 1; np.own = true; np.ren = 1;
+        lg.players[nid] = np; ch = true;
+        out.push({ t: lg.my, name: p.name, age: p.age, ovr: dispOvr(p.r, p.pos), rookie: np.name, own: true });
+        return nid;
+      });
+      if (t) t.roster = lg.own.slice();
+      if (ch) syncMyRoster(lg);
+    }
     lg.aiV = 2;
     return out;
   }
@@ -1496,8 +1595,8 @@ const Modes = (function () {
     const look = [];
     for (const id in lg.cards) {
       const p = lg.cards[id]; if (p.filler || p.pa == null) continue;
-      const a = p.age + 1, prime = dispOvr(p.baseR, p.pos), growing = a <= p.pa || Object.keys(p.baseR).some(k => p.r[k] < p.baseR[k] - 0.05) && a <= p.pa + MB.age.hold;
-      const crash = p.aging === 'meteor' || p.aging === 'flash', hold = !growing && !crash && a <= p.pa + MB.age.hold;
+      const a = p.age + 1, prime = dispOvr(p.baseR, p.pos), st0 = agStartOf(p), growing = a < st0 && Object.keys(p.baseR).some(k => p.r[k] < p.baseR[k] - 0.05);
+      const hold = !growing && a < st0;   // 70차: 다 컸고 아직 노화 전
       const risk = a >= MB.age.retire || (a >= MB.age.dropAge && p.ovr <= prime - MB.age.drop + 4);
       look.push({ id, name: p.name, pos: p.pos, age: a, ovr: p.ovr, prime, pa: p.pa, farm: inFarm(lg, id), k: risk ? 'risk' : growing ? 'grow' : hold ? 'hold' : 'down' });
     }
@@ -1599,7 +1698,7 @@ const Modes = (function () {
     lg.season++; lg.year++;
     startLeagueSeason(lg); mgrGoal(lg);
     const N = lg.cur.news = [], tn = t => (lg.teams.find(x => x.id === t) || {}).name;
-    for (const g of aiGone) if (g.ovr >= 72) N.push({ d: -1, k: 'retire', txt: `[${tn(g.t)}] ${g.name} ${g.age}세로 은퇴 (OVR ${g.ovr}) — 신인 ${g.rookie} 합류`, t: g.t });   // 이름난 선수 은퇴만 소식으로
+    for (const g of aiGone) if (g.ovr >= 72 || g.own) N.push({ d: -1, k: 'retire', txt: `[${tn(g.t)}] ${g.name} ${g.age}세로 은퇴 (OVR ${g.ovr}) — 신인 ${g.rookie} 합류`, t: g.t });   // 이름난 선수 은퇴만 소식으로
     return true;
   }
 
@@ -1677,7 +1776,7 @@ const Modes = (function () {
     ageCards, resetLives, retireCard, retireNum, legendLine, farmMove, inFarm, farmOn, futStandings, futRoster, seasonReport, leagueOffseason, hofInduct, cardLimited: limited, hofTotals, aiSeason, mgrGoal, mgrDone, clubInit, playF, MILE, startAgeOf, primeAgeOf, livesLeft, usesOf, cardUsable,
     playGame, createGame, handOf, watchDay, watchPost, playPostGame, postNext, postSkipOthers, myHurt, isHurt, isCloser, nextSp, canReorderRot, autoLineup, myAutoLineup, autoBench, BN_N, clearMyLineup, fillEmpty, hasEmpty, bpN, condOf, tiredDrop, nowDay, benchPitchers, fitsSlot, myLineupFit, checkLineup, makeRosters,
     gameDate, dateTxt, postDate,
-    newLeague, signCards, myPool, lgPlayer, playLeagueDay, playLeagueDays, seriesLeft, nextOpp, playLeagueMonth, playLeagueAll, leagueStandings, leaguePostInit, playLeagueSeries, playLeaguePostAll, nextLeagueSeason, monthOf, seriesWins, leaders,
+    newLeague, signCards, activateCard, freshCards, startPreview, renameKo, ownPlayers, myPool, lgPlayer, playLeagueDay, playLeagueDays, seriesLeft, nextOpp, playLeagueMonth, playLeagueAll, leagueStandings, leaguePostInit, playLeagueSeries, playLeaguePostAll, nextLeagueSeason, monthOf, seriesWins, leaders,
     seasonSummary, leagueSummary, awardsOf, USER_CLUBS,
     _t: { hash, makeRng, standList, addBox, emptyStat },
   };
