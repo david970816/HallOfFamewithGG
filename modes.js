@@ -768,7 +768,7 @@ const Modes = (function () {
   }
   function lgPlayer(lg, id) { return lg.players[id] || lg.cards[id] || (lg.gone && lg.gone[id]); }
   // 내 구단 선수 풀: 보관함 카드 + 보관함으로 못 채운 라인업 자리의 생성 선수(모든 능력치 65)
-  function myPool(lg) { return lg.teams.find(t => t.id === lg.my).roster.map(id => lg.players[id]).concat(Object.values(lg.cards).filter(p => !inFarm(lg, p.id))); }   // 2군 선수는 1군 경기에 못 나온다
+  function myPool(lg) { return lg.teams.find(t => t.id === lg.my).roster.map(id => lg.players[id]).filter(p => p && !inFarm(lg, p.id)).concat(Object.values(lg.cards).filter(p => !inFarm(lg, p.id))); }   // 2군 선수는 1군 경기에 못 나온다
   // 라인업 자리 수: 야수 9(지명타자 포함) · 선발 5 · 불펜 5 · 마무리 1 (보관함에는 불펜 6·마무리 2까지 두고 그중에서 고른다)
   const bpN = () => 5;   // 라인업 불펜 자리 수 (리그·온라인·보관함 같음)
   const MY_NEED = { C: 1, '1B': 1, '2B': 1, '3B': 1, SS: 1, LF: 1, CF: 1, RF: 1, DH: 1, SP: 5, RP: 6, CL: 1 };   // RP는 bpN(lg)로 바뀐다
@@ -896,7 +896,7 @@ const Modes = (function () {
     for (let i = 0; i < 5; i++) take(q => q.pos === 'SP', 'SP');
     const cl = take(q => q.pos === 'RP', 'RP'); if (cl) { cl.pos = 'CL'; cl.closer = true; }
     for (let i = 0; i < 5; i++) if (!take(q => q.pos === 'RP', 'RP')) { const x = take(q => q.pos === 'SP', 'RP'); if (x) x.pos = 'RP'; }
-    for (const p of own) { if (!p.ren) { p.name = renameKo(p.name, lg.seed + '|' + p.id); p.ren = 1; } p.own = true; }
+    for (const p of own) { if (!p.ren) { p.name = renameKo(p.name, lg.seed + '|' + p.id); p.ren = 1; } p.own = true; if (p.age == null) p.age = aiAge0(p.id); }
     lg.own = own.map(p => p.id);
     if (t) t.roster = lg.own.slice();
     return lg.own;
@@ -917,6 +917,7 @@ const Modes = (function () {
   function signCards(lg, vault) {
     const ids = new Set(); let n = 0;
     if (!lg.own) { ownPlayers(lg); n++; }   // 예전 리그도 원래 구단 선수를 받는다
+    for (const id of lg.own) { const q = lg.players[id]; if (q && q.age == null) q.age = aiAge0(id); }   // 원래 구단 선수 나이 (화면 표시용)
     // 70차: 보관함 카드는 라인업에 넣을 때 나이를 골라 들어온다 (activateCard). 여기서는 이미 들어온 카드만 이어 간다. 은퇴해 쉬는 카드·지운 카드는 빠진다
     for (const c of vault.cards || []) { if (!cardUsable(c, lg)) continue; const p = cardPlayer(c); if (!lg.cards[p.id]) continue; ids.add(p.id); if (!c.filler) lifeInit(lg.cards[p.id], c); if (lg.cards[p.id].bats == null) { lg.cards[p.id].bats = p.bats; lg.cards[p.id].throws = p.throws; } }
     // 원래 구단 선수가 없는 예전 리그만: 뛸 선수가 모자라면 이 리그에만 생성 선수
@@ -925,7 +926,7 @@ const Modes = (function () {
       for (let i = 0; have < FILL_MIN(pos); i++, have++) { const c = fillerCard(pos, 20 + i); c.id = `lf-${pos}-${i}`; const p = cardPlayer(c); ids.add(p.id); if (!lg.cards[p.id]) { lg.cards[p.id] = p; n++; } }
     }
     for (const id of Object.keys(lg.cards)) if (!ids.has(id)) { (lg.gone || (lg.gone = {}))[id] = lg.cards[id]; delete lg.cards[id]; n++; }
-    if (lg.farm) lg.farm = lg.farm.filter(id => lg.cards[id]);
+    if (lg.farm) lg.farm = lg.farm.filter(id => lg.cards[id] || (lg.own || []).indexOf(id) >= 0);
     fixNums(lg);   // 영구결번 번호를 단 다른 선수는 번호를 바꾼다
     if (n || lg.fillV !== 7) syncMyRoster(lg);
     const lu = lg.lineup;
@@ -1045,6 +1046,35 @@ const Modes = (function () {
     const R = lg.retired || (lg.retired = []); R.push(e); if (R.length > 40) R.splice(0, R.length - 40);
     (lg.cur.news || (lg.cur.news = [])).push({ d: manual ? Math.max(0, lg.cur.day - 1) : -1, k: 'retire', txt: `[${lg.club.name}] ${p.name} ${p.age}세로 ${manual ? '현역 은퇴 선언' : '은퇴'}${limited(lg) ? ` — 사용 ${c.uses}/${MB.age.lives}` : ' — 보관함에서 다시 쓸 수 있다'}`, t: lg.my, pid: id });
     return e;
+  }
+  // 71차: 원래 구단 선수 은퇴 — 같은 포지션 신인이 그 자리(원래 구단 선수 칸)를 이어받는다
+  function ownRookie(lg, p, nid, R, rookieYear) {
+    const td = DATA.teams.find(x => x.id === lg.my) || { bat: 100, pit: 100 }, sB = (td.bat - 100) * 0.8, sP = (td.pit - 100) * 0.5, BAL = S.BAL;
+    const pos = p.pos, gpos = pos === 'CL' ? 'RP' : pos;
+    const base = (isPitcher(p) ? (pos === 'SP' ? 47.5 + sP : 50 + sP) : BAL.starterBase + sB) + MB.ai.boost + MB.ai.rookie;
+    const np = aiKeyBoost(genPlayer(R, nid, gpos, base, {}));
+    np.pos = pos; if (pos === 'CL') np.closer = true;
+    np.age = 20 + Math.floor(R() * 4); np.rookie = rookieYear; np.own = true; np.ren = 1;
+    lg.players[nid] = np;
+    return np;
+  }
+  // 은퇴 선수 명단에 올린다 (보관함 선수와 같은 은퇴식 · 영구결번)
+  function ownRetired(lg, p, manual) {
+    if (lg.farm) lg.farm = lg.farm.filter(x => x !== p.id);
+    const C = lg.clubRec && lg.clubRec.car[p.id], s = lg.cur.stats && lg.cur.stats[p.id];
+    const e = { id: p.id, own: true, name: p.name, num: p.num, pos: p.pos, age: p.age, year: manual ? lg.cur.year : lg.year - 1, from: C ? C.from : (s ? lg.cur.year : null), manual: manual || undefined };
+    const R = lg.retired || (lg.retired = []); R.push(e); if (R.length > 40) R.splice(0, R.length - 40);
+    if (manual) (lg.cur.news || (lg.cur.news = [])).push({ d: Math.max(0, lg.cur.day - 1), k: 'retire', txt: `[${lg.club.name}] ${p.name} ${p.age}세로 현역 은퇴 선언`, t: lg.my, pid: p.id });
+    return e;
+  }
+  function retireOwn(lg, id) {
+    const i = (lg.own || []).indexOf(id), p = i >= 0 && lg.players[id];
+    if (!p) return { ok: false, why: '은퇴시킬 수 없는 선수' };
+    if (lg.cur.phase === 'post') return { ok: false, why: '포스트시즌 중에는 은퇴시킬 수 없다' };
+    const e = ownRetired(lg, p, true);
+    lg.own.splice(i, 1);   // 71차: 빈자리는 신인으로 채우지 않는다 (내 보관함 선수가 들어갈 자리)
+    syncMyRoster(lg); fillEmpty(lg);
+    return { ok: true, e };
   }
   // 감독이 직접 은퇴시키기 (리그모드 · 포스트시즌 중에는 안 된다)
   function retireCard(lg, vault, cid) {
@@ -1475,15 +1505,10 @@ const Modes = (function () {
         rateCache.delete(p);
         const retire = p.age >= MB.ai.hardAge || (p.age >= MB.ai.retireAge && R() < (p.age - MB.ai.retireAge + 1) * 0.3) || (p.age >= 33 && dispOvr(p.r, p.pos) < 52);
         if (!retire) return id;
-        const pos = p.pos, gpos = pos === 'CL' ? 'RP' : pos;
-        const base = (isPitcher(p) ? (pos === 'SP' ? 47.5 + sP : 50 + sP) : BAL.starterBase + sB) + MB.ai.boost + MB.ai.rookie;
-        const nid = `${lg.my}:o${i}:s${lg.season}`, np = aiKeyBoost(genPlayer(R, nid, gpos, base, {}));
-        np.pos = pos; if (pos === 'CL') np.closer = true;
-        np.age = 20 + Math.floor(R() * 4); np.rookie = lg.year + 1; np.own = true; np.ren = 1;
-        lg.players[nid] = np; ch = true;
-        out.push({ t: lg.my, name: p.name, age: p.age, ovr: dispOvr(p.r, p.pos), rookie: np.name, own: true });
-        return nid;
-      });
+        ch = true; ownRetired(lg, p, false);   // 71차: 신인으로 채우지 않는다 (원래 구단 선수는 처음 시작용) · 은퇴 선수 명단(영구결번 후보)에는 올린다
+        out.push({ t: lg.my, name: p.name, age: p.age, ovr: dispOvr(p.r, p.pos), own: true });
+        return null;
+      }).filter(Boolean);
       if (t) t.roster = lg.own.slice();
       if (ch) syncMyRoster(lg);
     }
@@ -1504,14 +1529,25 @@ const Modes = (function () {
   const farmOf = lg => lg.farm || (lg.farm = []);
   function inFarm(lg, id) { return !!(lg.farm && lg.farm.indexOf(id) >= 0); }
   // 1군 ↔ 2군. 1군에 그 포지션 선수가 모자라게 되면 (선발 5 · 불펜 3 · 나머지 1) 이 리그 전용 생성 선수가 1군을 채운다 (vault를 주면 바로)
+  // 1군 최소 라인업이 되나: 수비 8자리마다 그 포지션 선수 1명, 타자 9명(지명타자), 선발 5명, 마무리 1명. 모자란 것을 글로 돌려준다 (되면 '')
+  function minLineupLack(lg, pool) {
+    const bat = pool.filter(p => isBatter(p) && !(isPitcher(p) && p.role !== 'TW'));
+    for (const s of ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']) if (!bat.some(p => fitsSlot(p, s))) return `${POS_KO[s]}가 없어진다`;
+    if (bat.length < 9) return '타자가 9명보다 적어진다';
+    if (pool.filter(p => fitsSlot(p, 'SP')).length < 5) return '선발이 5명보다 적어진다';
+    if (!pool.some(p => fitsSlot(p, 'CL'))) return '마무리가 없어진다';
+    return '';   // 부상은 경기 때 대신 나갈 선수로 메우므로 여기서는 세지 않는다
+  }
   function farmMove(lg, id, down, vault) {
-    const p = lg.cards[id];
+    const p = lg.cards[id] || ((lg.own || []).indexOf(id) >= 0 ? lg.players[id] : null);   // 71차: 원래 구단 선수도 2군에
     if (!p || p.filler || !farmOn(lg)) return { ok: false, why: '2군에 보낼 수 없는 선수' };
     if (lg.cur.phase === 'post') return { ok: false, why: '포스트시즌 중에는 1·2군을 바꿀 수 없다' };
     const F = farmOf(lg);
     if (down) {
       if (F.indexOf(id) >= 0) return { ok: true };
-      if (F.length >= MB.fut.cap) return { ok: false, why: `2군은 ${MB.fut.cap}명까지` };
+      // 71차: 2군 인원 제한 대신 — 1군에 경기할 수 있는 최소 라인업(야수 8자리 + 지명타자 · 선발 5 · 마무리 1)이 남아야 보낼 수 있다
+      const why = minLineupLack(lg, myPool(lg).filter(q => q.id !== id));
+      if (why) return { ok: false, why: `2군에 보내면 1군 ${why} — 경기할 수 있는 최소 라인업이 안 된다` };
       F.push(id);
     } else { const i = F.indexOf(id); if (i >= 0) F.splice(i, 1); }
     if (vault) signCards(lg, vault);
@@ -1530,7 +1566,7 @@ const Modes = (function () {
   }
   // 퓨처스 한 팀 (경기용): 우리 2군 카드를 먼저 쓰고 빈자리는 생성 선수
   function futSide(lg, tid, d) {
-    const F = lg.cur.fut, gen = futRoster(lg, tid), mine = tid === lg.my ? farmOf(lg).map(id => lg.cards[id]).filter(Boolean) : [];
+    const F = lg.cur.fut, gen = futRoster(lg, tid), mine = tid === lg.my ? farmOf(lg).map(id => lg.cards[id] || lg.players[id]).filter(Boolean) : [];
     const field = {}, used = new Set();
     const mb = mine.filter(isBatter), mp = mine.filter(p => isPitcher(p) && p.role !== 'TW');
     for (const slot of BAT_POS) { const c = mb.find(p => !used.has(p.id) && p.pos === slot); if (c) { field[slot] = c; used.add(c.id); } }
@@ -1698,7 +1734,7 @@ const Modes = (function () {
     lg.season++; lg.year++;
     startLeagueSeason(lg); mgrGoal(lg);
     const N = lg.cur.news = [], tn = t => (lg.teams.find(x => x.id === t) || {}).name;
-    for (const g of aiGone) if (g.ovr >= 72 || g.own) N.push({ d: -1, k: 'retire', txt: `[${tn(g.t)}] ${g.name} ${g.age}세로 은퇴 (OVR ${g.ovr}) — 신인 ${g.rookie} 합류`, t: g.t });   // 이름난 선수 은퇴만 소식으로
+    for (const g of aiGone) if (g.ovr >= 72 || g.own) N.push({ d: -1, k: 'retire', txt: `[${tn(g.t)}] ${g.name} ${g.age}세로 은퇴 (OVR ${g.ovr})${g.rookie ? ` — 신인 ${g.rookie} 합류` : ""}`, t: g.t });   // 이름난 선수 은퇴만 소식으로
     return true;
   }
 
@@ -1773,7 +1809,7 @@ const Modes = (function () {
   return {
     MB, capOf, BAT_POS, VAULT_POS, POS_KO, MONTHS, simPos, natural, dispOvr, ovrOf, effR, offPenalty,
     primeOf, cardFromCareer, ensureFillers, vaultCheck, vaultAdd, vaultRemove, cardPlayer, isBatter, isPitcher,
-    ageCards, resetLives, retireCard, retireNum, legendLine, farmMove, inFarm, farmOn, futStandings, futRoster, seasonReport, leagueOffseason, hofInduct, cardLimited: limited, hofTotals, aiSeason, mgrGoal, mgrDone, clubInit, playF, MILE, startAgeOf, primeAgeOf, livesLeft, usesOf, cardUsable,
+    ageCards, resetLives, retireCard, retireOwn, retireNum, legendLine, farmMove, inFarm, farmOn, futStandings, futRoster, seasonReport, leagueOffseason, hofInduct, cardLimited: limited, hofTotals, aiSeason, mgrGoal, mgrDone, clubInit, playF, MILE, startAgeOf, primeAgeOf, livesLeft, usesOf, cardUsable,
     playGame, createGame, handOf, watchDay, watchPost, playPostGame, postNext, postSkipOthers, myHurt, isHurt, isCloser, nextSp, canReorderRot, autoLineup, myAutoLineup, autoBench, BN_N, clearMyLineup, fillEmpty, hasEmpty, bpN, condOf, tiredDrop, nowDay, benchPitchers, fitsSlot, myLineupFit, checkLineup, makeRosters,
     gameDate, dateTxt, postDate,
     newLeague, signCards, activateCard, freshCards, startPreview, renameKo, ownPlayers, myPool, lgPlayer, playLeagueDay, playLeagueDays, seriesLeft, nextOpp, playLeagueMonth, playLeagueAll, leagueStandings, leaguePostInit, playLeagueSeries, playLeaguePostAll, nextLeagueSeason, monthOf, seriesWins, leaders,

@@ -159,10 +159,13 @@ const ModesUI = (function () {
   }
   // 경기장 칸을 눌렀을 때: 교체 · 카드 보기
   // 경기장에서 선발을 누르면: 선발 로테이션 1~5선발 보기 (여기서는 바꾸지 않는다 — 투수 화면에서). 누르면 야구카드
-  function rotSheet() {
-    const lg = league(), lu = lg.lineup, nx = M.nextSp(lg);
-    const rows = [0, 1, 2, 3, 4].map(i => { const p = M.lgPlayer(lg, lu.sp[i]); return p ? `<button class="x-pk-item ${i === nx ? 'sel' : ''}" data-act="x-pinfo" data-m="lg" data-v="${esc(p.id)}" data-s="SP">${candHtml(p, 'SP', true, i === nx ? '▶ 다음 선발' : '', false, `${i + 1}선발`)}</button>` : `<div class="x-pk-item dis"><span class="chip">${i + 1}선발</span> <span class="muted">비어 있음</span></div>`; }).join('');
-    sheet(`<h3>선발 로테이션</h3><div class="small muted" style="margin-bottom:8px">누르면 야구카드. 선발 교체·순서 바꾸기는 '⚾ 투수' 화면에서 한다 (순서는 1선발 차례에만).</div>
+  // 72차: 그라운드에서 선발을 누르면 — 로테이션이 한 바퀴 돌아 1선발 차례일 때는 순서 바꾸기(두 명을 차례로 누르면 맞바꾼다). 도는 중에는 보기만 (누르면 야구카드)
+  function rotSheet(msg) {
+    const lg = league(), lu = lg.lineup, nx = M.nextSp(lg), can = M.canReorderRot(lg) && lg.cur.phase !== 'post', sel = can ? X.rotSel : null;
+    const rows = [0, 1, 2, 3, 4].map(i => { const p = M.lgPlayer(lg, lu.sp[i]); const act = can ? `data-act="x-rot-sel" data-v="${i}"` : p ? `data-act="x-pinfo" data-m="lg" data-v="${esc(p.id)}" data-s="SP"` : '';
+      return p || can ? `<button class="x-pk-item ${sel === i ? 'sel' : !can && i === nx ? 'sel' : ''}" ${act}>${p ? candHtml(p, 'SP', true, sel === i ? '✔ 골랐다 — 바꿀 자리를 누르기' : !can && i === nx ? '▶ 다음 선발' : '', false, `${i + 1}선발`) : `<span class="chip">${i + 1}선발</span> <span class="muted">비어 있음</span>`}</button>` : `<div class="x-pk-item dis"><span class="chip">${i + 1}선발</span> <span class="muted">비어 있음</span></div>`; }).join('');
+    const note = can ? '지금은 1선발 차례라 <b>로테이션 순서를 바꿀 수 있다</b>. 두 선발을 차례로 누르면 자리가 바뀐다.' : '<b>로테이션이 도는 중이라 순서를 바꿀 수 없다</b> (한 바퀴 돌아 1선발 차례가 되면 바꿀 수 있다). 누르면 야구카드.';
+    sheet(`<h3>선발 로테이션</h3>${msg ? `<div class="small x-okline" style="margin-bottom:6px">${esc(msg)}</div>` : ''}<div class="small muted" style="margin-bottom:8px">${note} 다른 투수로 선발을 바꾸는 건 '⚾ 투수' 화면이나 [내 선수]에서 한다.</div>
       <div class="x-pk-list">${rows}</div><button class="btn small block" data-act="x-close-btn" style="margin-top:12px">닫기</button>`);
   }
   function faSheet(key) {
@@ -726,12 +729,12 @@ const ModesUI = (function () {
       <div class="x-cand-mid"><div><b>${X.luIds && X.luIds.has(p.id) ? '★' : ''}${esc(p.name)}</b>${hurtLeft(p) ? ` <b class="x-warn">🚑 부상 ${hurtLeft(p)}경기</b>` : ''} ${posLabel ? `<span class="chip">${esc(posLabel)}</span>` : `<span class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)}${p.role === 'TW' ? ' · 이도류' : ''}</span>`}${tag ? `<span class="tiny muted"> · ${tag}</span>` : ''}${pitch && !noCond ? condTag(p) : ''}</div>${abilLine(p, pitch, slot)}</div>
       <span class="x-pk-ovr"><b class="num">${at}</b>${at !== own ? `<i>본래 ${own}</i>` : ''}</span></div>`;
   }
-  const tagOf = p => p.fresh ? '보관함 · 새로 투입' : p.filler ? '생성 선수' : p.card ? '보관함' : p.own ? '원래 구단 선수' : p.user ? '유저 선수' : '';
+  const tagOf = p => p.fresh ? '보관함 · 새로 투입' : X.mode && league() && M.inFarm(league(), p.id) ? '2군 · 고르면 1군으로' : p.filler ? '생성 선수' : p.card ? '보관함' : p.own ? '원래 구단 선수' : p.user ? '유저 선수' : '';
   function openPick(el) {
     const x = el.dataset.x, i = el.dataset.i, k = el.dataset.k;
     X.pk = { x, i, k };
     if (/^lg-/.test(x)) {
-      const lg = league(), lu = lg.lineup, pool = M.myPool(lg).concat(M.freshCards(lg, vault())); X.luIds = luSet(lg);   // 70차: 아직 안 넣은 보관함 카드도 (고르면 나이 선택)
+      const lg = league(), lu = lg.lineup, pool = M.myPool(lg).concat((lg.farm || []).map(id => M.lgPlayer(lg, id)).filter(Boolean)); X.luIds = luSet(lg);   // 71차: 내 선수(1군·2군)에 등록된 선수만 (보관함에서 바로 넣기는 없앰 — [내 선수]에서 1군에 합류시킨 뒤). 2군 선수는 고르면 1군으로 올라온다
       // 제 포지션 선수만 고를 수 있다 (지명타자는 타자 누구나). 다른 칸에 있던 선수와 맞바꿀 때 그 칸 규칙도 지켜야 한다
       const byOvr = slot => (a, b) => (!!a.filler - !!b.filler) || slotOvr(b, slot) - slotOvr(a, slot);   // 보관함 선수 먼저, 생성 선수(빈 칸)는 아래에 연하게
     if (x === 'lg-bp') {
@@ -781,6 +784,7 @@ const ModesUI = (function () {
     const pk = X.pk; if (!pk) return;
     // 70차: 아직 리그에 안 넣은 보관함 카드면 먼저 시작 나이를 고른다
     if (/^lg-/.test(pk.x) && v && /^v:/.test(v) && !league().cards[v]) { agePickSheet(v); return; }
+    if (/^lg-/.test(pk.x) && v && M.inFarm(league(), v)) { const r = M.farmMove(league(), v, false, vault()); if (!r.ok) { X.msg = r.why; X.pk = null; G().render(); return; } }   // 2군 선수를 고르면 1군으로 올린 뒤 넣는다
     X.lsel = [];
     if (/^lg-/.test(pk.x)) lgSelectChange({ dataset: { x: pk.x, i: pk.i, k: pk.k }, value: v });
     X.pk = null;
@@ -822,6 +826,47 @@ const ModesUI = (function () {
     const navBtn = (v, title, sub) => `<button class="btn block x-hub-btn" data-act="x-lsub" data-v="${v}"><span>${title}</span><span class="tiny muted">${sub} ▸</span></button>`;
     return `${head}${lgField(lg, byId)}
       ${navBtn('bat', '📋 타자', `타순 9 · 후보 ${M.BN_N}`)}${navBtn('pit', '⚾ 투수', `선발 5 · 불펜 ${M.bpN(lg)} · 마무리 1 · 후보`)}`;
+  }
+  // ---------- 71차: 라인업 아래 선수 목록 — 내 선수 전부(원래 구단 선수 · 투입한 보관함 선수 · 아직 안 넣은 보관함 선수). 누르면 넣을 자리 고르기 ----------
+  function luRoleMap(lg) {   // 선수 id → 지금 라인업 자리 이름
+    const lu = lg.lineup, m = {};
+    lu.bat.forEach((b, i) => { if (b.id) m[b.id] = `${i + 1}번 ${M.POS_KO[b.slot]}`; });
+    (lu.BN || []).forEach((id, i) => { if (id) m[id] = `후보${i + 1}`; });
+    for (const k of pkeys(lg)) { const id = pkGet(lu, k); if (id) m[id] = pkLabel(k); }
+    return m;
+  }
+  function rosterPanel(lg, pool) {
+    const role = luRoleMap(lg), fresh = M.freshCards(lg, vault());
+    const grp = p => M.isPitcher(p) && p.role !== 'TW' ? (p.pos === 'SP' ? 'SP' : 'RP') : 'B';
+    const order = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
+    const all = pool.concat(fresh), sec = X.rosSec || 'B';
+    const list = all.filter(p => grp(p) === sec).sort((a, b) => (!!b.fresh - !!a.fresh) || (!!role[b.id] - !!role[a.id]) || (sec === 'B' ? order.indexOf(a.pos) - order.indexOf(b.pos) : 0) || (b.ovr || M.dispOvr(b.r, b.pos)) - (a.ovr || M.dispOvr(a.r, a.pos)));
+    const row = p => {
+      const a = avOf(p), ovr = p.fresh ? p.ovr : (p.ovr || M.dispOvr(p.r, p.pos)), tag = p.fresh ? '<span class="chip red">새로 투입</span>' : p.card ? '<span class="chip">보관함</span>' : '';
+      return `<button class="x-ros-row ${role[p.id] ? 'on' : ''}" data-act="x-ros" data-v="${esc(p.id)}">
+        <canvas class="x-av" width="16" height="16" data-av="${a.av}" data-color="${esc(a.color)}"></canvas>
+        <span class="x-ros-mid"><b>${role[p.id] ? '★' : ''}${esc(p.name)}</b> ${tag}<span class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)}${p.fresh ? ' · 최고 OVR' : p.age ? ` · ${p.age}세` : ''}${hurtLeft(p) ? ' · 🚑' : ''}${role[p.id] ? ` · <b>${esc(role[p.id])}</b>` : ''}</span></span>
+        <b class="num x-ros-ovr">${ovr}</b></button>`;
+    };
+    const tab = (k, t) => `<button class="${sec === k ? 'on' : ''}" data-act="x-ros-sec" data-v="${k}">${t} ${all.filter(p => grp(p) === k).length}</button>`;
+    return `<div class="panel x-ros"><div class="row" style="align-items:center;margin-bottom:6px"><b>내 선수</b><span class="tiny muted" style="margin-left:6px">누르면 넣을 자리를 고른다 · ★ 지금 라인업</span></div>
+      <div class="seg" style="margin-bottom:6px">${tab('B', '타자')}${tab('SP', '선발')}${tab('RP', '불펜·마무리')}</div>
+      <div class="x-ros-list">${list.map(row).join('') || '<div class="small muted">선수가 없다.</div>'}</div></div>`;
+  }
+  // 선수 목록에서 고른 선수를 넣을 자리 고르기 (그 선수가 설 수 있는 자리만)
+  function rosSlotSheet(id) {
+    const lg = league(), lu = lg.lineup, p = M.lgPlayer(lg, id) || M.freshCards(lg, vault()).find(x => x.id === id); if (!p) return;
+    const nm = x => { const q = x && M.lgPlayer(lg, x); return q ? esc(q.name) : '<span class="muted">빈 칸</span>'; };
+    const opts = [];
+    if (M.isBatter(p) && !(M.isPitcher(p) && p.role !== 'TW')) {
+      lu.bat.forEach((b, i) => { if (M.fitsSlot(p, b.slot)) opts.push({ x: 'lg-bp', i, label: `${i + 1}번 ${M.POS_KO[b.slot]}`, cur: b.id }); });
+      if (!lu.bat.some(b => b.id === id)) (lu.BN || Array(M.BN_N).fill(null)).forEach((x, i) => opts.push({ x: 'lg-bn', i, label: `후보${i + 1}`, cur: x }));
+    } else {
+      for (const k of pkeys(lg)) { const slot = k[0] === 's' ? 'SP' : k === 'CL' ? 'CL' : 'RP'; if (M.fitsSlot(p, slot)) opts.push({ x: 'lg-pp', k, label: pkLabel(k), cur: pkGet(lu, k) }); }
+    }
+    sheet(`<h3>${esc(p.name)} · 넣을 자리</h3><div class="small muted" style="margin-bottom:8px">${p.fresh ? '보관함에서 새로 투입한다. 자리를 고르면 시작 나이를 정한다.' : '고른 자리에 있던 선수와 바뀐다.'}</div>
+      <div class="x-pk-list">${opts.map(o => `<button class="x-pk-item ${o.cur === id ? 'sel' : ''}" data-act="x-ros-put" data-x="${o.x}" data-i="${o.i == null ? '' : o.i}" data-k="${o.k || ''}" data-v="${esc(id)}"><div class="x-cand"><div class="x-cand-mid"><b>${esc(o.label)}</b> <span class="tiny muted">지금: ${o.cur === id ? '이 선수' : nm(o.cur)}</span></div></div></button>`).join('') || '<div class="small muted">이 선수가 설 수 있는 자리가 없다.</div>'}</div>
+      <div class="row" style="gap:8px;margin-top:12px">${p.fresh ? '' : `<button class="btn small" data-act="x-pinfo" data-m="lg" data-v="${esc(id)}" data-s="${esc(p.pos)}" style="flex:1">🃏 카드 보기</button>`}<button class="btn small" data-act="x-close-btn" style="flex:1">닫기</button></div>`);
   }
   // ---------- 타자 / 투수 화면: 작은 카드. 하나 누르면 카드 보기·선수 고르기, 두 장 고르면 교체 ----------
   //   key: 타순 'b0'~'b8' · 후보 'n0'~'n4' · 투수 보직 'sp0'…'CL' · 투수 후보 'x:<id>'
@@ -929,32 +974,43 @@ const ModesUI = (function () {
     rebuildPen(lg); saveLeague(); G().render();
   }
   // ---------- 내 선수: 초상화 1열 + 이번 시즌 기록. 초상화를 누르면 이 모드 역대 기록·수상·우승 ----------
+  // ---------- 내 선수 (71차): 1군 / 퓨처스(2군) 두 칸 + 아직 안 넣은 보관함 선수. 구단 선수 전부를 한 번에 본다 ----------
+  //   초상화: 이 모드 역대 기록 · 이름 줄: 넣을 자리 고르기 (1군·보관함) · 1군 성적은 모두 옆에, 2군 선수는 퓨처스 성적도
   function lgCards(lg) {
-    const ids = Object.keys(lg.cards), inLu = luSet(lg);
+    const inLu = luSet(lg), role = luRoleMap(lg);
     const grp = p => M.isPitcher(p) && p.role !== 'TW' ? (p.pos === 'SP' ? 2 : 3) : 1;
-    const list = ids.map(id => M.lgPlayer(lg, id)).filter(Boolean).sort((a, b) => grp(a) - grp(b) || (inLu.has(b.id) - inLu.has(a.id)) || (b.ovr || 0) - (a.ovr || 0));
+    const order = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
+    const sorter = (a, b) => grp(a) - grp(b) || (inLu.has(b.id) - inLu.has(a.id)) || (grp(a) === 1 ? order.indexOf(a.pos) - order.indexOf(b.pos) : 0) || (b.ovr || M.dispOvr(b.r, b.pos)) - (a.ovr || M.dispOvr(a.r, a.pos));
+    const own = (lg.own || []).map(id => lg.players[id]).filter(Boolean), cards = Object.keys(lg.cards).map(id => M.lgPlayer(lg, id)).filter(Boolean);
+    const all = own.concat(cards), fresh = M.freshCards(lg, vault());
     const farmOn = M.farmOn(lg), F = lg.cur.fut;
     const row = p => {
-      const farm = M.inFarm(lg, p.id), s = farm ? F && F.stats[p.id] : lg.cur.stats[p.id], a = avOf(p), R = lg.cardRec[p.id];
-      const line = s ? [batLine(s.b), pitLine(s.p)].filter(Boolean).join(' / ') : '';
-      const mv = farmOn && !p.filler && lg.cur.phase !== 'post' ? `<button class="btn small ghost x-farm-btn" data-act="x-farm" data-v="${esc(p.id)}" data-on="${farm ? 0 : 1}">${farm ? '1군 ↑' : '2군 ↓'}</button>` : '';
+      const farm = M.inFarm(lg, p.id), s1 = lg.cur.stats[p.id], s2 = farm && F ? F.stats[p.id] : null, a = avOf(p), R = lg.cardRec[p.id];
+      const ln = s => s ? [batLine(s.b), pitLine(s.p)].filter(Boolean).join(' / ') : '';
+      const mv = farmOn && (p.card || (lg.own || []).indexOf(p.id) >= 0) && !p.fresh && !p.filler && lg.cur.phase !== 'post' ? `<button class="btn small ghost x-farm-btn" data-act="x-farm" data-v="${esc(p.id)}" data-on="${farm ? 0 : 1}">${farm ? '1군 ↑' : '2군 ↓'}</button>` : '';
       const champs = R ? R.seasons.filter(x => x.champ).length : 0, titles = R ? R.seasons.reduce((n, x) => n + (x.titles || []).length, 0) : 0;
-      return `<div class="x-myrow ${p.filler ? 'x-filler' : ''}"><button class="x-myav" data-act="x-myp" data-v="${esc(p.id)}" title="역대 기록"><canvas class="x-av" width="16" height="16" data-av="${a.av}" data-color="${esc(a.color)}"></canvas></button>
-        <div class="x-myinfo"><div><b>${inLu.has(p.id) ? '★' : ''}${esc(p.name)}</b> <span class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)} · OVR ${p.ovr || M.dispOvr(p.r, p.pos)}${p.filler ? ' · 생성' : p.age ? ` · <b>${p.age}세</b>${p.pa && p.age < p.pa && p.baseR && Object.keys(p.baseR).some(k => p.r[k] < p.baseR[k] - 0.05) ? ` (성장 중${p.lastF ? ` · 지난 시즌 출전 성장 ×${p.lastF}` : ''})` : ''}` : ''}</span>${champs ? ` <span class="chip gold">🏆${champs}</span>` : ''}${titles ? ` <span class="chip">🏅${titles}</span>` : ''}</div>
-          <div class="tiny">${farm ? '퓨처스' : lg.cur.year + ' 시즌'}: ${line || "<span class=\"muted\">출전 기록 없음</span>"}${hurtLeft(p) ? ` <b class="x-warn">🚑 부상 ${hurtLeft(p)}경기 결장</b>` : ""}</div></div>${mv}</div>`;
+      const growing = p.baseR && Object.keys(p.baseR).some(k => p.r[k] < p.baseR[k] - 0.05) && (p.agStart == null || p.age < p.agStart);
+      const tag = p.fresh ? '<span class="chip red">새로 투입</span>' : p.card ? '<span class="chip">보관함</span>' : '';
+      const info = p.fresh ? `<span class="tiny muted">${esc(M.POS_KO[p.pos] || p.pos)} · 최고 OVR ${p.ovr} · 누르면 나이를 골라 1군에 합류</span>`
+        : `<span class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)} · OVR ${p.ovr || M.dispOvr(p.r, p.pos)}${p.age ? ` · <b>${p.age}세</b>` : ''}${growing ? ` (성장 중${p.lastF ? ` · 지난 시즌 출전 성장 ×${p.lastF}` : ''})` : ''}${role[p.id] ? ` · <b>${esc(role[p.id])}</b>` : ''}</span>`;
+      const stats = p.fresh ? '' : `<div class="tiny">${lg.cur.year} 1군: ${ln(s1) || '<span class="muted">출전 기록 없음</span>'}${farm ? `<br>퓨처스: ${ln(s2) || '<span class="muted">출전 기록 없음</span>'}` : ''}${hurtLeft(p) ? ` <b class="x-warn">🚑 부상 ${hurtLeft(p)}경기 결장</b>` : ''}</div>`;
+      const pick = p.fresh ? `data-act="x-fresh" data-v="${esc(p.id)}"` : !farm ? `data-act="x-ros" data-v="${esc(p.id)}"` : '';   // 새로 투입은 나이만 골라 1군으로 (라인업은 따로)
+      return `<div class="x-myrow ${role[p.id] ? 'x-inlu' : ''}"><button class="x-myav" ${p.fresh ? '' : `data-act="x-myp" data-v="${esc(p.id)}"`} title="역대 기록"><canvas class="x-av" width="16" height="16" data-av="${a.av}" data-color="${esc(a.color)}"></canvas></button>
+        <${pick ? 'button' : 'div'} class="x-myinfo" ${pick}><div><b>${inLu.has(p.id) ? '★' : ''}${esc(p.name)}</b> ${tag}${champs ? ` <span class="chip gold">🏆${champs}</span>` : ''}${titles ? ` <span class="chip">🏅${titles}</span>` : ''}</div>${info}${stats}</${pick ? 'button' : 'div'}>${mv}</div>`;
     };
-    const sec = (t, arr) => arr.length ? `<h4 class="x-h4">${t}</h4>${arr.map(row).join('')}` : '';
-    const one = list.filter(p => !M.inFarm(lg, p.id)), two = list.filter(p => M.inFarm(lg, p.id));
-    return `${farmOn ? futPanel(lg, two) : ''}<div class="panel"><h3>1군</h3><div class="tiny muted" style="margin-bottom:6px">초상화를 누르면 이 모드에서 쌓은 역대 기록·수상·우승 · ★ 지금 라인업${farmOn ? ' · 2군 ↓ 으로 퓨처스에 보내 키운다' : ''}</div>
-      ${sec('타자', one.filter(p => grp(p) === 1))}${sec('선발투수', one.filter(p => grp(p) === 2))}${sec('불펜·마무리', one.filter(p => grp(p) === 3))}</div>`;
-    function futPanel(lg, two) {
-      const fs = M.futStandings(lg), me = fs && fs.find(s => s.id === lg.my), cap = M.MB.fut.cap;
-      const tbl = fs ? `<details class="aw-gg" style="margin-top:8px"><summary class="small">퓨처스 순위 보기</summary><table class="lg x-box"><tr><th>순위</th><th>구단</th><th>승</th><th>패</th><th>무</th><th>승차</th></tr>${fs.map(s => `<tr class="${s.id === lg.my ? 'me' : ''}"><td>${s.rank}</td><td>${esc(s.name)} 2군</td><td>${s.w}</td><td>${s.l}</td><td>${s.t}</td><td>${s.gb ? s.gb.toFixed(1) : '-'}</td></tr>`).join('')}</table></details>` : '';
-      const last = F && F.my && F.my.length ? `<div class="tiny muted">최근: ${F.my.slice(-5).map(g => g[2] > g[3] ? '승' : g[2] < g[3] ? '패' : '무').join(' ')}</div>` : '';
-      return `<div class="panel x-fut"><div class="row" style="align-items:center;gap:8px"><h3 style="margin:0">🌱 2군 · 퓨처스 리그</h3><span class="spacer"></span><span class="small">${me && me.w + me.l + me.t ? `<b>${me.rank}위</b> ${me.w}-${me.l}${me.t ? '-' + me.t : ''}` : '개막 전'}</span></div>
-        <div class="tiny muted" style="margin:4px 0 6px">2군 선수(${two.length}/${cap})는 1군 경기에 못 나오고 퓨처스에서 뛴다. 퓨처스에서 많이 뛸수록 다음 해 더 자란다 (1군 출전의 ${Math.round(M.MB.fut.w * 100)}%로 쳐준다). 빈자리는 생성 선수가 채운다.</div>
-        ${last}${two.length ? two.map(row).join('') : '<div class="small muted">2군 선수가 없다. 어리게 넣은 유망주를 아래 1군 목록에서 2군 ↓ 로 내려 보자.</div>'}${tbl}</div>`;
-    }
+    const sec = (t, arr) => arr.length ? `<h4 class="x-h4">${t} <span class="tiny muted">${arr.length}명</span></h4>${arr.map(row).join('')}` : '';
+    const groups = arr => sec('타자', arr.filter(p => grp(p) === 1)) + sec('선발투수', arr.filter(p => grp(p) === 2)) + sec('불펜·마무리', arr.filter(p => grp(p) === 3));
+    const one = all.filter(p => !M.inFarm(lg, p.id)).sort(sorter), two = all.filter(p => M.inFarm(lg, p.id)).sort(sorter);
+    const fs = farmOn ? M.futStandings(lg) : null, me = fs && fs.find(s => s.id === lg.my), cap = M.MB.fut.cap;
+    const tbl = fs ? `<details class="aw-gg" style="margin-top:8px"><summary class="small">퓨처스 순위 보기</summary><table class="lg x-box"><tr><th>순위</th><th>구단</th><th>승</th><th>패</th><th>무</th><th>승차</th></tr>${fs.map(s => `<tr class="${s.id === lg.my ? 'me' : ''}"><td>${s.rank}</td><td>${esc(s.name)} 2군</td><td>${s.w}</td><td>${s.l}</td><td>${s.t}</td><td>${s.gb ? s.gb.toFixed(1) : '-'}</td></tr>`).join('')}</table></details>` : '';
+    return `<div class="panel"><div class="row" style="align-items:center"><h3 style="margin:0">1군</h3><span class="tiny muted" style="margin-left:8px">${one.length}명 · ★ 지금 라인업</span></div>
+        <div class="tiny muted" style="margin:4px 0 6px">이름을 누르면 넣을 자리를 고르고, 초상화를 누르면 이 모드 역대 기록${farmOn ? ' · 2군 ↓ 으로 퓨처스에 보내 키울 수 있다' : ''}</div>
+        ${groups(one)}</div>
+      ${farmOn ? `<div class="panel x-fut"><div class="row" style="align-items:center;gap:8px"><h3 style="margin:0">🌱 퓨처스 (2군)</h3><span class="tiny muted">${two.length}명</span><span class="spacer"></span><span class="small">${me && me.w + me.l + me.t ? `<b>${me.rank}위</b> ${me.w}-${me.l}${me.t ? '-' + me.t : ''}` : '개막 전'}</span></div>
+        <div class="tiny muted" style="margin:4px 0 6px">2군 선수는 1군 경기에 못 나오고 퓨처스에서 뛴다. 많이 뛸수록 다음 해 더 자란다.</div>
+        ${two.length ? groups(two) : '<div class="small muted">2군 선수가 없다. 1군 목록에서 2군 ↓ 로 내려 보자.</div>'}${tbl}</div>` : ''}
+      ${fresh.length ? `<div class="panel"><div class="row" style="align-items:center"><h3 style="margin:0">🗂️ 보관함 · 아직 안 넣은 선수</h3><span class="tiny muted" style="margin-left:8px">${fresh.length}명</span></div>
+        <div class="tiny muted" style="margin:4px 0 6px">누르면 시작 나이(20~30세)를 골라 1군에 합류한다. 라인업에는 1군 목록에서 따로 넣는다</div>${groups(fresh)}</div>` : ''}`;
   }
   // 이 모드 역대 기록 창
   function myCareerSheet(id) {
@@ -974,7 +1030,7 @@ const ModesUI = (function () {
       <tr class="x-tot"><td>통산</td><td>${tp.G || 0}</td><td>${tp.W || 0}</td><td>${tp.L || 0}</td><td>${tp.SV || 0}</td><td>${tp.HLD || 0}</td><td>${tp.outs ? ipT(tp) : '0'}</td><td>${tp.outs ? f2(Sim.ERA(tp)) : '-'}</td><td>${tp.K || 0}</td><td>${showB ? '' : Math.round(war * 10) / 10}</td></tr></table></div>`;
     const champs = rows.filter(r => r.champ).map(r => r.year), titles = rows.flatMap(r => r.titles.map(t => `${r.year} ${t}`));
     const fnow = lg.cur.fut && lg.cur.fut.stats[id], futRows = R.seasons.filter(x => x.fb || x.fp).map(x => ({ year: x.year, b: x.fb, p: x.fp })).concat(fnow && !done ? [{ year: lg.cur.year, b: fnow.b, p: fnow.p, now: true }] : []);
-    const canRetire = X.mode === 'lg' && !p.filler && p.card && lg.cards[id] && lg.cur.phase !== 'post';
+    const isOwn = (lg.own || []).indexOf(id) >= 0, canRetire = X.mode === 'lg' && !p.filler && ((p.card && lg.cards[id]) || isOwn) && lg.cur.phase !== 'post';   // 71차: 원래 구단 선수도
     sheet(`<div class="row" style="gap:10px;align-items:center"><canvas class="x-av" width="16" height="16" data-av="${a.av}" data-color="${esc(a.color)}" style="width:52px;height:52px"></canvas>
         <div style="flex:1"><b style="font-size:17px">${esc(p.name)}</b><div class="tiny muted">${esc(M.isCloser(p) ? '마무리' : M.POS_KO[p.pos] || p.pos)} · ${esc(lg.club.name)} · ${R.seasons.length}시즌${p.filler ? ' · 생성 선수' : ''}</div></div>
         <div class="x-card-ovr big"><b class="num">${p.ovr || M.dispOvr(p.r, p.pos)}</b><i>OVR</i></div></div>
@@ -984,7 +1040,7 @@ const ModesUI = (function () {
       ${futRows.length ? `<h4 class="x-h4">🌱 퓨처스 (2군)</h4><div class="tiny">${futRows.map(r => `${r.year}${r.now ? ' 진행' : ''}: ${[batLine(r.b), pitLine(r.p)].filter(Boolean).join(' / ') || '출전 없음'}`).join('<br>')}</div>` : ''}
       ${rows.length || futRows.length ? '' : '<div class="tiny muted" style="margin-top:8px">아직 이 모드에서 뛴 기록이 없다.</div>'}
       <div class="row" style="gap:8px;margin-top:14px"><button class="btn small" data-act="x-pinfo" data-m="lg" data-v="${esc(id)}" data-s="-" style="flex:1">🃏 카드 보기</button><button class="btn small" data-act="x-close-btn" style="flex:1">닫기</button></div>
-      ${canRetire ? `<button class="btn small ghost block" data-act="x-retire" data-v="${esc(p.card)}" style="margin-top:8px">👋 현역 은퇴시키기 <span class="tiny muted">(보관함에서 다시 쓸 수 있다 · 은퇴식에서 영구결번 지정)</span></button>` : ''}`);
+      ${canRetire ? `<button class="btn small ghost block" data-act="x-retire" data-v="${esc(isOwn ? id : p.card)}" ${isOwn ? 'data-own="1"' : ''} style="margin-top:8px">👋 현역 은퇴시키기 <span class="tiny muted">(${isOwn ? '구단에서 빠지고 신인은 오지 않는다' : '보관함에서 다시 쓸 수 있다'} · 은퇴식에서 영구결번 지정)</span></button>` : ''}`);
   }
   // ---------- 은퇴식 · 영구결번 (구단 레전드) ----------
   function legendStat(lg, id) {
@@ -1674,14 +1730,32 @@ const ModesUI = (function () {
       case 'x-lu-slot': luPickSheet(v); break;
       case 'x-pk': openPick(el); break;
       case 'x-fa': faSheet(v); break;
-      case 'x-rot': rotSheet(); break;
+      case 'x-rot': X.rotSel = null; rotSheet(); break;
+      case 'x-rot-sel': {   // 72차: 선발 로테이션 순서 바꾸기 (1선발 차례에만)
+        const lg = league(), lu = lg.lineup, i = +v;
+        if (!M.canReorderRot(lg) || lg.cur.phase === 'post') { X.rotSel = null; rotSheet(); break; }
+        if (X.rotSel == null || X.rotSel === i) { X.rotSel = X.rotSel === i ? null : i; rotSheet(); break; }
+        const j = X.rotSel, a = lu.sp[j]; lu.sp[j] = lu.sp[i]; lu.sp[i] = a; X.rotSel = null;
+        saveLeague(); G().render(); rotSheet(`${j + 1}선발 ↔ ${i + 1}선발 자리를 바꿨다`); break;
+      }
       case 'x-myp': myCareerSheet(v); break;
       case 'x-pk-do': closeSheet(); doPick(v); break;
+      // 71차: 라인업 아래 선수 목록
+      case 'x-ros-sec': X.rosSec = v; G().render(); break;
+      case 'x-ros': rosSlotSheet(v); break;
+      case 'x-ros-put': {
+        if (el.dataset.x === 'lg-pp' && /^sp/.test(el.dataset.k)) {   // 선발 자리끼리 맞바꾸기는 1선발 차례에만 (새 선발을 넣는 건 언제든)
+          const lg = league(), other = pkeys(lg).find(kk => kk[0] === 's' && kk !== el.dataset.k && pkGet(lg.lineup, kk) === v);
+          if (other && !M.canReorderRot(lg)) { closeSheet(); X.msg = '선발 순서는 1선발이 나올 차례에만 바꿀 수 있다'; G().render(); break; }
+        }
+        closeSheet(); X.pk = { x: el.dataset.x, i: el.dataset.i, k: el.dataset.k }; doPick(v); break;
+      }
+      case 'x-fresh': X.pk = null; agePickSheet(v); break;   // 71차: 보관함 선수 → 나이 골라 1군 합류 (라인업에는 직접 넣는다)
       case 'x-age-pick': {   // 70차: 보관함 카드 첫 투입 (나이 확정)
         if (!G().armed('x-age-' + v, el, `${v}세로 투입`)) break;
         const lg = league(), id = el.dataset.id, p = M.activateCard(lg, vault(), id.replace(/^v:/, ''), +v);
         closeSheet();
-        if (p) { saveLeague(); X.msg = `${p.name} ${p.age}세로 투입 (OVR ${p.ovr})`; doPick(id); } else X.msg = '투입할 수 없는 카드다';
+        if (p) { saveLeague(); X.msg = X.pk ? `${p.name} ${p.age}세로 투입 (OVR ${p.ovr})` : `${p.name} ${p.age}세로 1군 합류 (OVR ${p.ovr}) — 라인업에는 따로 넣으면 된다`; doPick(id); } else X.msg = '투입할 수 없는 카드다';
         G().render(); break;
       }
       case 'x-pinfo': {
@@ -1754,7 +1828,7 @@ const ModesUI = (function () {
       case 'x-lg-next': { const lg = league(); runLoading({ year: lg.year + 1, sub: '새 시즌 준비', msgs: ['비시즌', '스프링캠프 출발', '시범경기 점검', '개막 준비'], dur: 1500 }, () => { const vv = vault(), O = M.leagueOffseason(lg, vv); saveVault(vv); saveLeague(); if (O && O.gone.length) X.msg = `👋 은퇴: ${O.gone.map(g => `${g.name}(${g.age}세)`).join(', ')} — 은퇴식에서 영구결번을 정할 수 있다. 보관함에서 다시 쓰거나 명예의 전당에 올릴 수도 있다`; }, () => offSheet()); break; }
       case 'x-off': offSheet(); break;
       case 'x-farm': { const lg = league(), r = M.farmMove(lg, v, el.dataset.on === '1', vault()); if (r.ok) saveLeague(); else X.msg = r.why; G().render(); break; }
-      case 'x-retire': if (G().armed('x-retire-' + v, el, '한 번 더 누르면 은퇴 (이 리그에서 빠지고, 보관함에서 다시 쓸 수 있다)')) { const lg = league(), vv = vault(), r = M.retireCard(lg, vv, v); if (r.ok) { saveVault(vv); saveLeague(); G().render(); retireSheet([r.e.id], `${r.e.name} 은퇴식`); } else { X.msg = r.why; closeSheet(); G().render(); } } break;
+      case 'x-retire': if (G().armed('x-retire-' + v, el, el.dataset.own ? '한 번 더 누르면 은퇴 (구단에서 빠진다)' : '한 번 더 누르면 은퇴 (이 리그에서 빠지고, 보관함에서 다시 쓸 수 있다)')) { const lg = league(), vv = vault(), r = el.dataset.own ? M.retireOwn(lg, v) : M.retireCard(lg, vv, v); if (r.ok) { saveVault(vv); saveLeague(); G().render(); retireSheet([r.e.id], `${r.e.name} 은퇴식`); } else { X.msg = r.why; closeSheet(); G().render(); } } break;
       case 'x-retnum': { const lg = league(), r = M.retireNum(lg, v, el.dataset.on === '1'); if (r.ok) { if (el.dataset.on === '1') { const e = (lg.retired || []).find(x => x.id === v); (lg.cur.news || (lg.cur.news = [])).push({ d: Math.max(-1, lg.cur.phase === 'reg' ? lg.cur.day - 1 : -1), k: 'legend', txt: `[${lg.club.name}] ${e.name}의 ${e.num}번 영구결번`, t: lg.my }); } saveLeague(); G().render(); retireSheet(el.dataset.ids.split(',')); } else X.msg = r.why; break; }
       case 'x-retlist': { const lg = league(); retireSheet(el.dataset.ids ? el.dataset.ids.split(',') : (lg.retired || []).slice().reverse().map(x => x.id), el.dataset.ids ? '은퇴식' : '은퇴 선수'); break; }
       case 'x-psbox': break;

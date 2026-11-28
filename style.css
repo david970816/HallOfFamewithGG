@@ -995,3 +995,15 @@ button.cash-cell { cursor: pointer; }
 .shop-item .btn:disabled { opacity: .4; filter: grayscale(1); }
 .seg.pos9 { flex-wrap: wrap; } .seg.pos9 button { flex: 1 0 calc(20% - 3px); white-space: nowrap; }   /* 69차: 포지션 9개 (지명 추가) → 5개씩 두 줄 */
 .x-agebtns.x-agebtns-11 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }   /* 70차: 리그 투입 나이 20~30세 */
+/* 71차: 리그 라인업 아래 내 선수 목록 */
+.x-ros-list { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }
+.x-ros-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 10px; background: var(--paper2); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.x-ros-row.on { box-shadow: inset 3px 0 0 var(--gold); }
+.x-ros-row .x-av { width: 30px; height: 30px; border-radius: 6px; flex: none; image-rendering: pixelated; }
+.x-ros-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.x-ros-mid b { font-size: 13.5px; }
+.x-ros-mid .tiny { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.x-ros-ovr { font-size: 16px; min-width: 28px; text-align: right; }
+/* 71차: 내 선수 — 이름 줄을 눌러 자리 고르기 */
+button.x-myinfo { border: 0; background: transparent; color: inherit; font: inherit; text-align: left; padding: 0; cursor: pointer; }
+.x-myrow.x-inlu { box-shadow: inset 3px 0 0 var(--gold); }
