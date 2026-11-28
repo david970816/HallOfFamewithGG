@@ -579,12 +579,14 @@ const Modes = (function () {
     for (const k of keys) r[k] = Math.round(clamp(base + star + (tpl[k] || 0) + R.gauss() * 9, 22, 96));
     let name = o.name;
     if (!name) name = o.foreign ? R.pick(DATA.foreign) : R.pick(DATA.surnames) + R.pick(DATA.given1) + R.pick(DATA.given2);
+    if (o.foreign && o.used) { for (let t = 0; t < 30 && o.used.has(name); t++) name = R.pick(DATA.foreign); o.used.add(name); }   // 72차: 외국인 이름이 리그 안에서 겹치지 않게
     const hb = R(), bats = hb < 0.03 ? "S" : hb < 0.38 ? "L" : "R", throws = role === "P" ? (R() < 0.28 ? "L" : "R") : (pos === "1B" && R() < 0.2 ? "L" : "R");   // 투타 (좌우 상성용)
     return { id, name, pos, role, r, foreign: !!o.foreign, num: R.int(1, 99), bats, throws };
   }
   function makeRosters(seed) {
     const R = makeRng(hash('rosters|' + seed));
     const BAL = S.BAL, players = {}, teams = [];
+    const usedF = new Set();   // 외국인 이름 (리그 안에서 한 번씩)
     for (const td of DATA.teams) {
       const sB = (td.bat - 100) * 0.8, sP = (td.pit - 100) * 0.5;
       const real = (DATA.realRosters && DATA.realRosters[td.id] || []).map(s => { const [name, pos, , star] = s.split(' '); return { name, pos, star: star === 'S' }; });
@@ -602,7 +604,7 @@ const Modes = (function () {
         else base = 50 + sP;
         const rp = foreign ? null : take(pos);
         const id = td.id + ':' + i;
-        players[id] = aiKeyBoost(genPlayer(R, id, pos, base + MB.ai.boost, { foreign, name: rp && rp.name, star: rp ? rp.star : undefined }));   // 컴퓨터 구단 능력치 올림
+        players[id] = aiKeyBoost(genPlayer(R, id, pos, base + MB.ai.boost, { foreign, name: rp && rp.name, star: rp ? rp.star : undefined, used: usedF }));   // 컴퓨터 구단 능력치 올림
         t.roster.push(id);
       });
       teams.push(t);
@@ -920,6 +922,15 @@ const Modes = (function () {
     const ids = new Set(); let n = 0;
     if (!lg.own) { ownPlayers(lg); n++; }   // 예전 리그도 원래 구단 선수를 받는다
     for (const id of lg.own) { const q = lg.players[id]; if (q && q.age == null) q.age = aiAge0(id); }   // 원래 구단 선수 나이 (화면 표시용)
+    if (!lg.fnV) {   // 72차: 예전 리그 — 같은 이름 외국인 선수가 있으면 뒤 선수 이름을 바꾼다 (한 번만)
+      const seen = new Set(), R = makeRng(hash('fn|' + lg.seed));
+      for (const id of Object.keys(lg.players)) {
+        const q = lg.players[id]; if (!q || !q.foreign) continue;
+        if (seen.has(q.name)) { let nm = q.name; for (let t = 0; t < 40 && seen.has(nm); t++) { const b = R.pick(DATA.foreign); nm = q.ren ? renameKo(b, lg.seed + '|' + id) : b; } q.name = nm; }
+        seen.add(q.name);
+      }
+      lg.fnV = 1;
+    }
     // 70차: 보관함 카드는 라인업에 넣을 때 나이를 골라 들어온다 (activateCard). 여기서는 이미 들어온 카드만 이어 간다. 은퇴해 쉬는 카드·지운 카드는 빠진다
     for (const c of vault.cards || []) { if (!cardUsable(c, lg)) continue; const p = cardPlayer(c); if (!lg.cards[p.id]) continue; ids.add(p.id); if (!c.filler) lifeInit(lg.cards[p.id], c); if (lg.cards[p.id].bats == null) { lg.cards[p.id].bats = p.bats; lg.cards[p.id].throws = p.throws; } }
     // 원래 구단 선수가 없는 예전 리그만: 뛸 선수가 모자라면 이 리그에만 생성 선수

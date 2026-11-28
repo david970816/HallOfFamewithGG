@@ -1228,7 +1228,7 @@
     const aw = rec.reduce((a, t) => a + t.awards.length, 0);
     const tb = sumLines(rec, 'bat'), tp = sumLines(rec, 'pit');
     const box = (v, k) => `<div><b>${v}</b><span>${k}</span></div>`;
-    const stat = [tb.PA ? `타격 ${r3(Sim.AVG(tb))} · ${tb.H}안타 ${tb.HR}홈런 ${tb.RBI}타점 · OPS ${r3(Sim.OPS(tb))} (${tb.PA}타석)` : '', tp.outs ? `투구 ${ip(tp)}이닝 ERA ${f2(Sim.ERA(tp))} · ${tp.K}탈삼진${tp.W ? ` · ${tp.W}승` : ''}` : ''].filter(Boolean);
+    const stat = [tb.PA ? `타격 ${r3(Sim.AVG(tb))} · ${tb.H}안타 ${tb.HR}홈런 ${tb.RBI}타점${tb.SB ? ` ${tb.SB}도루` : ""} · OPS ${r3(Sim.OPS(tb))} (${tb.PA}타석)` : '', tp.outs ? `투구 ${ip(tp)}이닝 ERA ${f2(Sim.ERA(tp))} · ${tp.K}탈삼진${tp.W ? ` · ${tp.W}승` : ''}` : ''].filter(Boolean);
     const list = rec.map(t => `<div class="small">${/금메달|^우승/.test(t.result) ? '🥇' : /은메달|준우승/.test(t.result) ? '🥈' : /동메달/.test(t.result) ? '🥉' : '🇰🇷'} ${t.year} ${esc(t.name)} — <b>${esc(t.result)}</b>${t.rank ? ` <span class="muted">(${t.rank}위/${t.field}개국)</span>` : ''}${t.awards.length ? ` · <span style="color:var(--gold)">${t.awards.map(esc).join(', ')}</span>` : ''}</div>`)
       .concat(old.map(s => `<div class="small">🇰🇷 ${esc(s)}</div>`)).join('');
     return `<div class="panel"><h3>국가대표</h3>
@@ -1316,15 +1316,16 @@
     const parts = [];
     if (e.pit && e.pit.outs && (!e.bat || !e.bat.PA || /다승|평균자책|세이브|투수/.test(focus || ''))) {
       const p = e.pit;
-      const main = { '다승왕': `${p.W}승`, '평균자책점왕': `ERA ${f2(Sim.ERA(p))}`, '세이브왕': `${p.SV || 0}세이브` }[focus];
+      const main = { '다승왕': `${p.W}승`, '평균자책점왕': `ERA ${f2(Sim.ERA(p))}`, '세이브왕': `${p.SV || 0}세이브`, '탈삼진왕': `${p.K}K` }[focus];
       if (main) parts.push(`<b>${main}</b>`);
-      parts.push(`${p.W}승 ${p.L}패${p.SV ? ` ${p.SV}세이브` : ''} ${ip(p)}이닝 ERA ${f2(Sim.ERA(p))} ${p.K}K`);
+      // 72차: 굵게 쓴 기록(타이틀)은 아래 줄에서 빼서 두 번 안 나오게
+      parts.push([focus === '다승왕' ? `${p.L}패` : `${p.W}승 ${p.L}패`, p.SV && focus !== '세이브왕' ? `${p.SV}세이브` : '', `${ip(p)}이닝`, focus === '평균자책점왕' ? '' : `ERA ${f2(Sim.ERA(p))}`, focus === '탈삼진왕' ? '' : `${p.K}K`].filter(Boolean).join(' '));
     }
     if (e.bat && e.bat.PA && !(e.pit && e.pit.outs && /다승|평균자책|세이브|투수/.test(focus || ''))) {
       const b = e.bat;
-      const main = { '타격왕': `타율 ${r3(Sim.AVG(b))}`, '안타왕': `${b.H}안타`, '홈런왕': `${b.HR}홈런`, '타점왕': `${b.RBI}타점` }[focus];
+      const main = { '타격왕': `타율 ${r3(Sim.AVG(b))}`, '안타왕': `${b.H}안타`, '홈런왕': `${b.HR}홈런`, '타점왕': `${b.RBI}타점`, '도루왕': `${b.SB}도루` }[focus];
       if (main) parts.push(`<b>${main}</b>`);
-      parts.push(`${r3(Sim.AVG(b))} ${b.HR}홈런 ${b.RBI}타점 OPS ${r3(Sim.OPS(b))}`);
+      parts.push([focus === '타격왕' ? '' : r3(Sim.AVG(b)), focus === '홈런왕' ? '' : `${b.HR}홈런`, focus === '타점왕' ? '' : `${b.RBI}타점`, b.SB && focus !== '도루왕' ? `${b.SB}도루` : '', `OPS ${r3(Sim.OPS(b))}`].filter(Boolean).join(' '));
     }
     parts.push(`WAR ${f1(e.war)}`);
     return `<div class="aw-line tiny">${parts.filter((x, i, a) => a.indexOf(x) === i).join(' · ')}</div>`;

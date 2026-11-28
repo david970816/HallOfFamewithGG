@@ -115,7 +115,7 @@ const ModesUI = (function () {
   function sheet(html) { G().$modal.innerHTML = `<div class="overlay" data-act="x-close"><div class="sheet x-sheet">${html}</div></div>`; drawAvatars(G().$modal); }
   function closeSheet() { G().$modal.innerHTML = ''; }
   function drawAvatars(root) { (root || document).querySelectorAll('canvas.x-av').forEach(cv => G().drawAvatar(cv, +cv.dataset.av || 1, cv.dataset.color)); }
-  const batLine = b => b && b.PA ? `${r3(Sim.AVG(b))} ${b.H}안타 ${b.HR}홈런 ${b.RBI}타점 · OPS ${r3(Sim.OPS(b))}` : '';
+  const batLine = b => b && b.PA ? `${r3(Sim.AVG(b))} ${b.H}안타 ${b.HR}홈런 ${b.RBI}타점${b.SB ? ` ${b.SB}도루` : ""} · OPS ${r3(Sim.OPS(b))}` : '';
   const pitLine = p => p && p.outs ? `${p.W}승 ${p.L}패${p.SV ? ` ${p.SV}세이브` : ''}${p.HLD ? ` ${p.HLD}홀드` : ''} · ${ipT(p)}이닝 ERA ${f2(Sim.ERA(p))} ${p.K}K` : '';
 
   // ================================================================
@@ -428,7 +428,7 @@ const ModesUI = (function () {
         <div class="x-teamgrid">${GAME_DATA.teams.map(t => `<button class="x-team ${c.slot === t.id ? 'on' : ''}" data-act="x-cr" data-k="slot" data-v="${t.id}" style="--team:${t.color}">${esc(t.name)}</button>`).join('')}</div></div>
       <div class="panel"><h3>2. 구단 이름</h3><input id="x-club-name" class="x-input" maxlength="12" placeholder="${esc(team.name)} 자리의 새 이름" value="${esc(c.name)}"></div>
       <div class="panel"><h3>3. 엠블럼과 색</h3><div class="x-emb">${EMBLEMS.map(e => `<button class="${c.emblem === e ? 'on' : ''}" data-act="x-cr" data-k="emblem" data-v="${e}">${e}</button>`).join('')}</div>
-        <div class="x-colors">${[team.color].concat(COLORS).map(col => `<button class="${(c.color || team.color) === col ? 'on' : ''}" data-act="x-cr" data-k="color" data-v="${col}" style="background:${col}"></button>`).join('')}</div></div>
+        <div class="x-colors">${[team.color].concat(COLORS.filter(x => x.toLowerCase() !== String(team.color).toLowerCase())).map(col => `<button class="${(c.color || team.color) === col ? 'on' : ''}" data-act="x-cr" data-k="color" data-v="${col}" style="background:${col}"></button>`).join('')}</div></div>
       <div class="panel"><h3>4. 유니폼</h3><div class="small muted">홈 경기와 원정 경기에 입을 유니폼</div>${uniPicker(c.uni || {}, c.color || team.color, 'x-cr-uni')}</div>
       <div class="panel small muted">${X.mode === 'on' ? '다른 9팀은 유저 구단이다 (베타: 가상 유저 — 각자 원작에서 키운 선수 몇 명을 데리고 있다). 리그모드와 규칙은 같다. ' : '다른 9팀은 컴퓨터 구단이다. '}첫해 영입 인원 제한·연봉 한도 없음. 보관함 선수(${vault().cards.length}명)는 만든 뒤 '라인업' 탭에서 자유롭게 넣는다.</div>
       <button class="btn go block" data-act="x-lg-create" style="margin-top:14px">${esc(c.emblem)} 구단 창단</button>`;
